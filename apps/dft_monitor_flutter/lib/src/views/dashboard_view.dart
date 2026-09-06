@@ -76,8 +76,12 @@ class DashboardView extends ConsumerWidget {
                               _Line('Runs', data.runsDir),
                               _Line(
                                   'Volumen',
-                                  data.runsMounted ? 'montado' : 'DESMONTADO',
-                                  alerta: !data.runsMounted),
+                                  switch (data.runsState) {
+                                    'montado' => 'montado',
+                                    'sin_estrenar' => 'sin estrenar',
+                                    _ => 'DESMONTADO',
+                                  },
+                                  alerta: data.runsState == 'desmontado'),
                               _Line(
                                   'Auto-avance',
                                   data.autoAdvance

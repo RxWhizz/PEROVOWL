@@ -58,6 +58,7 @@ class HealthResponse(BaseModel):
     platform: PlatformInfo
     runs_dir: str
     runs_mounted: bool
+    runs_state: str
     nearest_existing_path: str
     n_jobs_tracked: int
     last_poll_at: float | None
@@ -73,6 +74,11 @@ async def health(request: Request) -> HealthResponse:
     `runs_mounted` existe porque `runs/` y `calculations/` son symlinks a un
     volumen externo. Sin esta señal, "el disco está desmontado" y "no hay jobs"
     se ven exactamente igual desde el cliente.
+
+    `runs_state` desglosa ese booleano en tres, porque "el directorio no está"
+    tampoco distingue por sí solo un volumen caído de una instalación recién
+    hecha donde todavía no se ha lanzado nada. Al usuario que acaba de instalar
+    se le decía DESMONTADO y salud "Atención" sin que hubiera nada roto.
     """
     poller = get_poller(request)
     runs_dir = poller.runs_dir
@@ -90,8 +96,26 @@ async def health(request: Request) -> HealthResponse:
     mounted = runs_dir.is_dir()
     fresh = age is not None and age < 3 * interval
 
+    # Lo que separa "volumen caido" de "instalacion nueva" es de donde cuelga
+    # runs_dir: dentro de la raiz de datos es un directorio que el pipeline aun
+    # no ha creado; fuera, es el symlink al disco externo y su ausencia si es un
+    # fallo. Un enlace que no resuelve, o jobs que teniamos y ya no vemos, lo son
+    # en cualquier caso.
+    try:
+        dentro_de_datos = runs_dir.is_relative_to(paths.data_root())
+    except (OSError, ValueError):
+        dentro_de_datos = False
+    enlace_roto = runs_dir.is_symlink() and not runs_dir.exists()
+
+    if mounted:
+        runs_state = "montado"
+    elif enlace_roto or poller.snapshots or not dentro_de_datos:
+        runs_state = "desmontado"
+    else:
+        runs_state = "sin_estrenar"
+
     return HealthResponse(
-        ok=mounted and fresh,
+        ok=fresh and runs_state != "desmontado",
         version=__version__,
         # Dónde busca cada cosa: sin esto, "no veo mis jobs" no es diagnosticable
         # en un binario, donde la raíz de datos ya no es el repositorio.
@@ -102,6 +126,7 @@ async def health(request: Request) -> HealthResponse:
         platform=PlatformInfo(**platform_caps.describe(poller.cfg)),
         runs_dir=str(runs_dir),
         runs_mounted=mounted,
+        runs_state=runs_state,
         nearest_existing_path=str(nearest),
         n_jobs_tracked=len(poller.snapshots),
         last_poll_at=last_poll,

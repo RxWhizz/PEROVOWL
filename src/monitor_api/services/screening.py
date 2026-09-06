@@ -16,7 +16,7 @@ import logging
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -26,11 +26,14 @@ from .. import paths
 
 log = logging.getLogger(__name__)
 
-# Cuántas ejecuciones se recuerdan en memoria.
+# Cuántas ejecuciones se recuerdan.
 MAX_RUNS = 20
 
-_lock = threading.Lock()
+# Reentrante: `_recortar_historial` y `_cargar_historial` se llaman tanto desde
+# dentro como desde fuera de la sección crítica.
+_lock = threading.RLock()
 _runs: dict[str, ScreeningRun] = {}
+_historial_cargado = False
 
 
 # ── Configuración ────────────────────────────────────────────────────────────
@@ -191,12 +194,73 @@ class ScreeningRun:
         }
 
 
+# ── Persistencia ─────────────────────────────────────────────────────────────
+#
+# El historial vivía solo en memoria: una criba de 300 candidatos devolvía sus
+# seleccionados y se perdían al cerrar la app. Peor que rehacer el trabajo —que
+# es barato— es que `start_dft_for_run` necesita `selected_candidates` enteros
+# para materializar los jobs, así que sin esto un cribado no sobrevivía a un
+# reinicio ni para lanzar el DFT que lo justificaba.
+
+_CAMPOS_RUN = frozenset(f.name for f in fields(ScreeningRun))
+
+
+def _dir_historial() -> Path:
+    return paths.data_root() / "data" / "screening" / "runs"
+
+
+def _guardar(run: ScreeningRun) -> None:
+    """Vuelca una ejecución terminada. Nunca revienta al llamante."""
+    if run.status in ("pending", "running"):
+        return
+    destino = _dir_historial() / f"{run.run_id}.json"
+    try:
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        # Escritura atómica: si la app muere a medias, el fichero anterior sigue
+        # siendo válido en vez de quedar un JSON truncado que no se puede releer.
+        parcial = destino.with_suffix(".json.parcial")
+        parcial.write_text(
+            json.dumps(asdict(run), ensure_ascii=False), encoding="utf-8"
+        )
+        parcial.replace(destino)
+    except (OSError, TypeError, ValueError) as exc:
+        log.warning("No se pudo persistir el cribado %s: %s", run.run_id, exc)
+
+
+def _cargar_historial() -> None:
+    """Relee las ejecuciones de disco la primera vez que se consulta el historial."""
+    global _historial_cargado
+    with _lock:
+        if _historial_cargado:
+            return
+        _historial_cargado = True
+        directorio = _dir_historial()
+        if not directorio.is_dir():
+            return
+        for fichero in directorio.glob("*.json"):
+            try:
+                datos = json.loads(fichero.read_text(encoding="utf-8"))
+                run = ScreeningRun(
+                    **{k: v for k, v in datos.items() if k in _CAMPOS_RUN}
+                )
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                # Un fichero corrupto no puede impedir ver el resto del historial.
+                log.warning("Cribado persistido ilegible en %s: %s", fichero, exc)
+                continue
+            _runs.setdefault(run.run_id, run)
+        _recortar_historial()
+
+
 def _recortar_historial() -> None:
     if len(_runs) <= MAX_RUNS:
         return
     viejos = sorted(_runs.values(), key=lambda r: r.started_at)[: len(_runs) - MAX_RUNS]
     for r in viejos:
         _runs.pop(r.run_id, None)
+        try:
+            (_dir_historial() / f"{r.run_id}.json").unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("No se pudo borrar el cribado %s: %s", r.run_id, exc)
 
 
 def start_run(
@@ -208,6 +272,7 @@ def start_run(
     use_mlff: bool | None = None,
 ) -> ScreeningRun:
     """Lanza la cascada en segundo plano y devuelve el registro de la ejecución."""
+    _cargar_historial()
     cfg = load_generator_config()
     cfg_seed = int(cfg.get("random_seed", 42))
     effective_seed = cfg_seed if random_seed is None else int(random_seed)
@@ -244,11 +309,13 @@ def start_run(
 
 
 def get_run(run_id: str) -> ScreeningRun | None:
+    _cargar_historial()
     return _runs.get(run_id)
 
 
 def list_runs() -> list[dict[str, Any]]:
     """Historial reciente, sin las filas de resultados (que son grandes)."""
+    _cargar_historial()
     resumen = []
     for r in sorted(_runs.values(), key=lambda x: x.started_at, reverse=True):
         d = r.as_dict()
@@ -309,6 +376,9 @@ def start_dft_for_run(poller, run_id: str, *, start_runner: bool = True) -> dict
 
     run.dft_batch_path = str(batch_dir)
     run.dft_prepared = len(prepared)
+    # Sin esto, reabrir la app perdería el vínculo entre el cribado y el lote
+    # DFT que salió de él.
+    _guardar(run)
 
     return {
         "run_id": run.run_id,
@@ -379,9 +449,11 @@ def _screening_batch_root(poller) -> Path:
 
 
 def reset_runs() -> None:
-    """Olvida el historial (para tests)."""
+    """Olvida el historial en memoria (para tests). No toca lo persistido."""
+    global _historial_cargado
     with _lock:
         _runs.clear()
+        _historial_cargado = False
 
 
 def _ejecutar(run: ScreeningRun, cfg: dict[str, Any]) -> None:
@@ -457,6 +529,7 @@ def _ejecutar(run: ScreeningRun, cfg: dict[str, Any]) -> None:
         run.error = f"{type(exc).__name__}: {exc}"
     finally:
         run.finished_at = time.time()
+        _guardar(run)
 
 
 def _generar_lotes(gen, run: ScreeningRun):

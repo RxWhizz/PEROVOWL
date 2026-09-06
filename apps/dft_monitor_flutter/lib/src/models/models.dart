@@ -65,6 +65,7 @@ class Health {
     required this.dataRoot,
     required this.runsDir,
     required this.runsMounted,
+    required this.runsState,
     required this.nJobsTracked,
     required this.lastPollAgeSec,
     required this.wsClients,
@@ -79,6 +80,9 @@ class Health {
       dataRoot: paths['data_root'] as String? ?? '-',
       runsDir: json['runs_dir'] as String? ?? '-',
       runsMounted: json['runs_mounted'] == true,
+      // Un motor viejo no manda runs_state: se deduce del booleano de siempre.
+      runsState: json['runs_state'] as String? ??
+          (json['runs_mounted'] == true ? 'montado' : 'desmontado'),
       nJobsTracked: (json['n_jobs_tracked'] as num? ?? 0).toInt(),
       lastPollAgeSec: (json['last_poll_age_sec'] as num?)?.toDouble(),
       wsClients: (json['ws_clients'] as num? ?? 0).toInt(),
@@ -94,6 +98,10 @@ class Health {
   final String dataRoot;
   final String runsDir;
   final bool runsMounted;
+
+  /// `montado` | `sin_estrenar` | `desmontado`. Solo el último es un fallo:
+  /// en una instalación recién hecha `runs/` aún no existe y eso es normal.
+  final String runsState;
   final int nJobsTracked;
   final double? lastPollAgeSec;
   final int wsClients;

@@ -122,6 +122,9 @@ def test_health_detecta_volumen_desmontado(tmp_path):
 
     assert body["runs_mounted"] is False
     assert body["ok"] is False
+    # Cuelga fuera de la raíz de datos: es el disco externo, no un directorio
+    # que el pipeline todavía no haya creado.
+    assert body["runs_state"] == "desmontado"
     assert body["n_jobs_tracked"] == 0
     # Señala dónde se rompe la cadena de directorios.
     assert Path(body["nearest_existing_path"]).exists()
@@ -146,6 +149,38 @@ def test_health_marca_no_ok_si_el_poller_esta_congelado(tmp_path):
     body = TestClient(app).get("/api/health").json()
     assert body["runs_mounted"] is True
     assert body["ok"] is False, "un poller congelado debe reportarse como no-ok"
+
+
+def test_health_no_alarma_en_una_instalacion_sin_estrenar(tmp_path):
+    """Recien instalado, runs/ no existe porque no se ha lanzado nada aun.
+
+    El panel decia salud "Atencion" y volumen "DESMONTADO" en rojo sobre una
+    instalacion intacta: el mismo patron que el resto de la auditoria, un
+    recurso ausente contado como averia.
+    """
+    paths.set_data_root(tmp_path)
+    app = create_app(config={})
+    app.state.poller = StubPoller(tmp_path / "runs" / "relax_basic", [])
+    app.state.hub = None
+
+    body = TestClient(app).get("/api/health").json()
+
+    assert body["runs_state"] == "sin_estrenar"
+    assert body["runs_mounted"] is False
+    assert body["ok"] is True, "no hay nada roto, solo nada hecho todavia"
+
+
+def test_health_sigue_avisando_si_el_volumen_tenia_jobs_y_desaparece(tmp_path):
+    """Con jobs ya rastreados, que runs/ se esfume si es una averia."""
+    paths.set_data_root(tmp_path)
+    app = create_app(config={})
+    app.state.poller = StubPoller(tmp_path / "runs" / "relax_basic", SNAPSHOTS)
+    app.state.hub = None
+
+    body = TestClient(app).get("/api/health").json()
+
+    assert body["runs_state"] == "desmontado"
+    assert body["ok"] is False
 
 
 # ── Paginación y filtros ─────────────────────────────────────────────────────
@@ -1892,3 +1927,92 @@ def test_la_busqueda_ampliada_sigue_bloqueando_ids_hostiles(tmp_path, hostil):
     raiz.mkdir(parents=True)
     with pytest.raises(UnsafeJobIdError):
         resolve_job_dir(raiz, hostil)
+
+
+# ── Persistencia del cribado ─────────────────────────────────────────────────
+
+def _run_terminado(**extra):
+    """Una ejecución de cribado ya acabada, como la deja `_ejecutar`."""
+    from monitor_api.services.screening import ScreeningRun
+
+    datos = dict(
+        run_id="abc123def456",
+        batch_id=7,
+        n_requested=300,
+        use_mlff=False,
+        status="done",
+        stage="listo",
+        n_selected=2,
+        selected_candidate_ids=["c-1", "c-2"],
+        selected_candidates=[{"candidate_id": "c-1"}, {"candidate_id": "c-2"}],
+        finished_at=time.time(),
+    )
+    datos.update(extra)
+    return ScreeningRun(**datos)
+
+
+def test_el_cribado_sobrevive_a_cerrar_la_app(tmp_path):
+    """Los seleccionados vivían solo en RAM y se perdían al cerrar.
+
+    No es solo rehacer trabajo: `start_dft_for_run` necesita
+    `selected_candidates` enteros, así que sin persistirlos un cribado no
+    sobrevivía ni para lanzar el DFT que lo justificaba.
+    """
+    from monitor_api.services import screening
+
+    paths.set_data_root(tmp_path)
+    screening.reset_runs()
+    screening._guardar(_run_terminado())
+
+    screening.reset_runs()  # equivale a reabrir la app
+    recuperado = screening.get_run("abc123def456")
+
+    assert recuperado is not None
+    assert recuperado.n_selected == 2
+    assert recuperado.selected_candidates == [
+        {"candidate_id": "c-1"},
+        {"candidate_id": "c-2"},
+    ]
+
+
+def test_un_cribado_a_medias_no_se_persiste(tmp_path):
+    """Solo interesa el resultado; un run vivo no sobrevive al proceso."""
+    from monitor_api.services import screening
+
+    paths.set_data_root(tmp_path)
+    screening.reset_runs()
+    screening._guardar(_run_terminado(status="running", stage="tier 0"))
+
+    screening.reset_runs()
+    assert screening.get_run("abc123def456") is None
+
+
+def test_un_cribado_corrupto_no_tumba_el_resto_del_historial(tmp_path):
+    """Un JSON truncado no puede dejar ilegible todo lo demás."""
+    from monitor_api.services import screening
+
+    paths.set_data_root(tmp_path)
+    screening.reset_runs()
+    screening._guardar(_run_terminado())
+    (screening._dir_historial() / "roto.json").write_text("{no es json", encoding="utf-8")
+
+    screening.reset_runs()
+    assert screening.get_run("abc123def456") is not None
+
+
+def test_el_historial_persistido_se_recorta(tmp_path, monkeypatch):
+    """MAX_RUNS acota la memoria; también tiene que acotar el disco."""
+    from monitor_api.services import screening
+
+    paths.set_data_root(tmp_path)
+    monkeypatch.setattr(screening, "MAX_RUNS", 3)
+    screening.reset_runs()
+    for i in range(6):
+        screening._guardar(_run_terminado(run_id=f"run{i:03d}", started_at=1000.0 + i))
+
+    screening.reset_runs()
+    assert len(screening.list_runs()) == 3
+    assert len(list(screening._dir_historial().glob("*.json"))) == 3
+    # Se quedan los más recientes.
+    assert screening.get_run("run005") is not None
+    assert screening.get_run("run000") is None

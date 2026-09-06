@@ -88,5 +88,8 @@ chmod 0755 \
 
 dpkg-deb --build --root-owner-group "$STAGE" "$TMP/$DEB_NAME"
 cp "$TMP/$DEB_NAME" "$ROOT/dist/$DEB_NAME"
-sha256sum "$ROOT/dist/$DEB_NAME" > "$ROOT/dist/$DEB_NAME.sha256"
+# Desde dist/ y con el nombre pelado: si se le pasa la ruta absoluta, esa ruta
+# acaba dentro de SHA256SUMS y `sha256sum -c` falla en la maquina del usuario,
+# que no tiene /home/runner/... Igual que en build_desktop.sh y build_web.sh.
+(cd "$ROOT/dist" && sha256sum "$DEB_NAME" > "$DEB_NAME.sha256")
 dpkg-deb --info "$ROOT/dist/$DEB_NAME"
