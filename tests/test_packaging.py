@@ -960,3 +960,33 @@ def test_ningun_hijo_hereda_la_salida_del_monitor():
             linea = fuente[:m.start()].count("\n") + 1
             assert "stdout=" in bloque, f"{rel}:{linea} hereda stdout del monitor"
             assert "stderr=" in bloque, f"{rel}:{linea} hereda stderr del monitor"
+
+
+def test_los_imports_perezosos_estan_declarados_en_el_spec():
+    """PyInstaller analiza imports estáticos: los diferidos hay que declararlos.
+
+    v0.7.0 salió con `buho.structure.fases` dentro del binario y sin spglib,
+    porque `grupo_espacial()` lo importa dentro de la función. Identificar la
+    fase —lo que esa versión anunciaba— devolvía «spglib no instalado» en todo
+    binario publicado. Es el mismo patrón que dejó la tabla del scissor SOC sin
+    cargar: algo que solo se nota ejecutando el paquete.
+    """
+    import re
+
+    spec = (ROOT / "packaging" / "dft-monitor-engine.spec").read_text(encoding="utf-8")
+    fuente = (ROOT / "src" / "buho").rglob("*.py")
+
+    # Módulos importados dentro de una función (indentados), no al principio.
+    perezosos = set()
+    for py in fuente:
+        for linea in py.read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^\s+(?:import|from)\s+([a-z_][a-z0-9_]*)", linea)
+            if m and linea.startswith((" ", "\t")):
+                perezosos.add(m.group(1))
+
+    # Solo se exigen los de terceros que el binario necesita de verdad.
+    vigilados = {"spglib"} & perezosos
+    for modulo in sorted(vigilados):
+        assert f'"{modulo}"' in spec, (
+            f"'{modulo}' se importa de forma perezosa en buho/ pero no está en "
+            "hiddenimports: el binario saldría sin él y fallaría en silencio")

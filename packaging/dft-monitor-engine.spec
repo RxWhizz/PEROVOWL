@@ -99,6 +99,12 @@ hiddenimports = [
     # declararlo aquí el binario podría quedarse sin él y no cargar
     # ninguna clave, en silencio.
     "dotenv",
+    # `buho.structure.fases` lo importa dentro de `grupo_espacial()` para no
+    # exigirlo a quien solo genera estructuras. PyInstaller analiza imports
+    # estaticos, asi que no lo veia: v0.7.0 salio con el modulo de fases dentro
+    # y sin spglib, de modo que identificar la fase --- que es lo que anunciaba
+    # esa version--- devolvia "spglib no instalado" en todo binario.
+    "spglib",
     "uvicorn.lifespan.on",
     "uvicorn.lifespan.off",
     "uvicorn.loops.auto",

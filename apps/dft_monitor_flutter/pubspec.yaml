@@ -1,7 +1,7 @@
 name: dft_monitor_flutter
 description: Desktop Flutter shell for the local DFT monitor engine.
 publish_to: "none"
-version: 0.7.0+1
+version: 0.7.1+1
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
