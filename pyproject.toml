@@ -28,6 +28,11 @@ dependencies = [
     "perovskite-utils @ git+https://github.com/RxWhizz/perovskite-utils@v0.1.0",
     "gpaw>=24.1.0",
     "ase>=3.23.0",
+    # Identifica el grupo espacial de una estructura RELAJADA, que es lo unico
+    # que dice en que fase quedo el material. Sin el, `buho.structure.fases`
+    # genera las candidatas pero no puede decir cual salio, y el pipeline
+    # volveria a suponer que todo es cubico.
+    "spglib>=2.0",
     "numpy>=1.26",
     "pandas>=2.0",
     "matplotlib>=3.8",
