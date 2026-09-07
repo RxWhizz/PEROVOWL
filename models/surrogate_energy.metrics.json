@@ -23,6 +23,6 @@
     "mu_BX",
     "is_organic_A"
   ],
-  "source_relax_dir": "/home/luis-ochoa/Documents/Vscode/py/dft/runs/relax_basic",
+  "source_relax_dir": "relax_basic",
   "trained_at": "2026-06-06T08:06:27.736254Z"
 }

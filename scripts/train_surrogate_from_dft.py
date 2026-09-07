@@ -137,7 +137,9 @@ def main():
         "y_min": round(float(y.min()), 3),
         "y_max": round(float(y.max()), 3),
         "features": feat_cols,
-        "source_relax_dir": str(args.relax_dir),
+        # Solo el nombre: la ruta absoluta viaja dentro del binario
+        # distribuido y publica la disposicion de discos de quien entreno.
+        "source_relax_dir": Path(args.relax_dir).name,
         "trained_at": datetime.utcnow().isoformat() + "Z",
     }
     Path(str(out).replace(".pkl", ".metrics.json")).write_text(json.dumps(metrics, indent=2))

@@ -48,12 +48,21 @@ def _persistir_reparto(reparto: dict[str, Any]) -> dict[str, Any]:
         except (OSError, yaml.YAMLError) as exc:
             raise RuntimeError(f"No se pudo leer {ruta}: {exc}") from exc
 
+    # Bajo `monitor:`, que es la seccion que el poller recibe como su cfg
+    # (`main.py` le pasa `cfg["monitor"]`). Escrito al nivel superior el fichero
+    # queda valido y nadie lo lee: el arranque diria "configuracion ok" y
+    # seguiria usando los slots de antes.
+    seccion = cfg.get("monitor")
+    if not isinstance(seccion, dict):
+        seccion = {}
+        cfg["monitor"] = seccion
+
     previo = {
-        "runner_slots": cfg.get("runner_slots"),
-        "runner_cores": cfg.get("runner_cores"),
+        "runner_slots": seccion.get("runner_slots"),
+        "runner_cores": seccion.get("runner_cores"),
     }
-    cfg["runner_slots"] = int(reparto["runner_slots"])
-    cfg["runner_cores"] = int(reparto["runner_cores"])
+    seccion["runner_slots"] = int(reparto["runner_slots"])
+    seccion["runner_cores"] = int(reparto["runner_cores"])
 
     ruta.parent.mkdir(parents=True, exist_ok=True)
     # Atomica: si el proceso muere a medias, la configuracion anterior sigue
@@ -64,7 +73,7 @@ def _persistir_reparto(reparto: dict[str, Any]) -> dict[str, Any]:
     parcial.replace(ruta)
     return {
         "anterior": previo,
-        "nuevo": {k: cfg[k] for k in ("runner_slots", "runner_cores")},
+        "nuevo": {k: seccion[k] for k in ("runner_slots", "runner_cores")},
         "fichero": str(ruta),
     }
 

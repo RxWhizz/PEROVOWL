@@ -1,4 +1,4 @@
-# Monitor DFT 0.5.0
+# Monitor DFT 0.5.1
 
 Release de correcciones sobre 0.4.0. Si instalaste 0.4.0, **actualiza**: esa
 versión no arrancaba bien en una Windows limpia y aplicaba mal varias
@@ -12,16 +12,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.5.0>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.5.1>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.5.0-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.5.0-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.5.0-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.5.0-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.5.1-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.5.1-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.5.1-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.5.1-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -29,13 +29,13 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.5.0-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.5.1-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.5.0-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.5.0-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.5.1-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.5.1-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
@@ -54,10 +54,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.5.0-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.5.1-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.5.0-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.5.1-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -70,8 +70,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.5.0-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.5.0-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.5.1-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.5.1-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -79,7 +79,7 @@ tar xzf dft-monitor-desktop-0.5.0-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.5.0-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.5.1-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
@@ -91,8 +91,8 @@ exige un token en `monitor.auth.token`.
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.5.0-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.5.0-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.5.1-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.5.1-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -169,6 +169,22 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.5.1
+
+Salido de auditar el binario publicado de 0.5.0 arrancándolo con un usuario
+simulado, sin ninguna variable de entorno de desarrollo y desde `System32`.
+
+- **El arranque rápido escribía el reparto donde nadie lo lee.** `runner_slots`
+  y `runner_cores` iban a la raíz de `monitor.yaml`, pero el monitor recibe la
+  subsección `monitor:`. El fichero quedaba válido, el botón decía
+  «configuración ok» y los cálculos seguían corriendo con los slots de antes:
+  justo lo que el botón promete ajustar. Es la corrección que motiva esta
+  versión — si usaste el arranque rápido en 0.5.0, **actualiza**.
+- **El binario llevaba dentro una ruta de la máquina de entrenamiento.**
+  `models/surrogate_energy.metrics.json` guardaba el directorio absoluto de
+  donde salieron los datos. No se leía nunca —es procedencia— pero viajaba a
+  cada usuario. Ahora se guarda solo el nombre.
 
 ### Corregido en 0.5.0
 

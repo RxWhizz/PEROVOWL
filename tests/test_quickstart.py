@@ -123,8 +123,11 @@ def test_el_reparto_se_escribe_en_la_configuracion(tmp_path, monkeypatch):
 
     import yaml
     cfg = yaml.safe_load(paths.config_file().read_text(encoding="utf-8"))
-    assert cfg["runner_slots"] >= 1
-    assert cfg["runner_cores"] >= 1
+    # Bajo `monitor:`: es la subseccion que el poller recibe como su cfg.
+    # Al nivel superior el YAML queda valido y nadie lo lee.
+    assert cfg["monitor"]["runner_slots"] >= 1
+    assert cfg["monitor"]["runner_cores"] >= 1
+    assert "runner_slots" not in cfg, "no puede quedar suelto en la raiz"
 
 
 def test_escribir_el_reparto_no_borra_el_resto_de_la_configuracion(tmp_path, monkeypatch):
@@ -134,16 +137,17 @@ def test_escribir_el_reparto_no_borra_el_resto_de_la_configuracion(tmp_path, mon
     cfgdir.mkdir(parents=True)
     monkeypatch.setenv("DFT_MONITOR_CONFIG_DIR", str(cfgdir))
     (cfgdir / "monitor.yaml").write_text(
-        "poll_interval_sec: 45\nauth:\n  token: secreto\n", encoding="utf-8")
+        "monitor:\n  poll_interval_sec: 45\n  runner_slots: 1\n"
+        "telegram:\n  bot_token: secreto\n", encoding="utf-8")
 
     quickstart._persistir_reparto({"runner_slots": 6, "runner_cores": 3})
 
     import yaml
     cfg = yaml.safe_load((cfgdir / "monitor.yaml").read_text(encoding="utf-8"))
-    assert cfg["runner_slots"] == 6
-    assert cfg["runner_cores"] == 3
-    assert cfg["poll_interval_sec"] == 45
-    assert cfg["auth"]["token"] == "secreto"
+    assert cfg["monitor"]["runner_slots"] == 6
+    assert cfg["monitor"]["runner_cores"] == 3
+    assert cfg["monitor"]["poll_interval_sec"] == 45
+    assert cfg["telegram"]["bot_token"] == "secreto"
 
 
 def test_arranca_el_protocolo_cuando_todo_esta_listo(tmp_path, monkeypatch):
