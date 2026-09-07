@@ -105,3 +105,13 @@ openapitools.json
 .aider*
 .idea/
 .vscode/
+
+# Documentacion en Markdown: fuera del repositorio salvo los README, que son
+# la puerta de entrada y si tienen que viajar con el codigo.
+#
+# Ojo: .gitignore solo afecta a lo NO rastreado. Los .md que ya estan en el
+# indice siguen versionandose hasta que se saquen con `git rm --cached`.
+*.md
+!README.md
+# Las notas de cada release salen de aqui: tiene que viajar con el codigo.
+!docs/notas-release.md
