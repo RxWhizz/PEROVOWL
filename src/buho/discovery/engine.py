@@ -923,7 +923,12 @@ class DiscoveryLoop:
             return
         updates = df.set_index("candidate_id")
         cols = [
-            "Eg_surrogate_eV", "Eg_sigma_eV", "Eform_eV_atom", "Eform_std_eV_atom",
+            "Eg_surrogate_eV",
+            # El valor llevado a escala experimental y el desplazamiento que se
+            # le sumo. Sin ellos en el ledger, la ventana PV decide con un
+            # numero que no se puede reconstruir desde los datos guardados.
+            "Eg_exp_eV", "eg_scale_delta_eV",
+            "Eg_sigma_eV", "Eform_eV_atom", "Eform_std_eV_atom",
             "meff_e_pred_m0", "meff_h_pred_m0", "eps_inf_pred", "exciton_binding_meV",
             "band_score", "stab_score", "transport_score", "dielectric_score",
             "exciton_score", "pv_score_ml", "acquisition_score", "mlff_evaluated",
