@@ -573,7 +573,11 @@ def _rutas_gpaw(config: dict[str, Any] | None, env_name: str) -> dict[str, str]:
         "prefix": prefijo,
         "python": f"{prefijo}/bin/python",
         "mpirun": f"{prefijo}/bin/mpiexec",
-        "setups": f"{prefijo}/share/gpaw/setups",
+        # Los datasets PAW llegan como paquete `gpaw-data` de conda-forge, que
+        # los deja en site-packages, no en share/gpaw. Comprobado sobre un
+        # entorno real: `share/gpaw` no existe. Apuntar ahi dejaba la config
+        # senalando a un directorio vacio.
+        "setups": f"{prefijo}/lib/python{GPAW_PYTHON}/site-packages/gpaw_data/setups",
     }
 
 
@@ -664,12 +668,19 @@ def plan_dft(config: dict[str, Any] | None = None, *,
                      "y OpenMPI (~2 GB)."),
         timeout=5400,
     ))
+    # `gpaw-data` entra como dependencia de conda-forge y deja los setups en
+    # site-packages, asi que normalmente no hay nada que descargar. Se
+    # comprueba con un elemento concreto —el mismo que usa la comprobacion de
+    # capacidad— y solo si falta se recurre a `gpaw install-data`, que si baja
+    # ~500 MB. Descargarlos siempre era gastar red y tiempo por costumbre.
+    setups = rutas["setups"]
     steps.append(wsl_step(
         "datasets-paw",
-        f"{_sh(rutas['python'])} -c 'import sys' && "
-        f"{_sh(root_prefix + '/envs/' + env + '/bin/gpaw')} install-data "
-        f"--register {_sh(rutas['setups'])}",
-        descripcion="Descarga y registra los datasets PAW (~500 MB).",
+        f"test -f {_sh(setups + '/Cs.PBE.gz')} "
+        f"|| {_sh(root_prefix + '/envs/' + env + '/bin/gpaw')} install-data "
+        f"--register {_sh(setups)}",
+        descripcion=("Comprueba los datasets PAW y solo los descarga si "
+                     "gpaw-data no los trajo (~500 MB en ese caso)."),
         timeout=3600,
     ))
     steps.append(wsl_step(

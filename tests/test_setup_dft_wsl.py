@@ -165,7 +165,7 @@ def test_al_instalar_se_escribe_donde_quedo_el_entorno(tmp_path, monkeypatch):
     wsl = cfg["discovery"]["wsl"]
     assert wsl["distro"] == "Ubuntu"
     assert wsl["python"].endswith("/envs/gpaw246/bin/python")
-    assert wsl["setup_path"].endswith("/share/gpaw/setups")
+    assert wsl["setup_path"].endswith("/site-packages/gpaw_data/setups")
     assert wsl["project_root"].startswith("/mnt/")
 
 
@@ -202,3 +202,23 @@ def test_dft_esta_en_el_despachador():
     """Antes solo se podía instalar `mlff` y los grupos pip."""
     plan = setup_wizard.plan("dft", config={})
     assert plan.target == "dft"
+
+
+def test_los_setups_apuntan_a_donde_conda_los_deja():
+    """`gpaw-data` de conda-forge los deja en site-packages, no en share/gpaw.
+
+    Comprobado sobre un entorno real: `share/gpaw` no existe. Apuntar ahí
+    dejaba `setup_path` señalando a un directorio vacío y GPAW sin datasets.
+    """
+    rutas = setup_wizard._rutas_gpaw({}, "gpaw246")
+    assert rutas["setups"].endswith("/site-packages/gpaw_data/setups")
+    assert "/share/gpaw" not in rutas["setups"]
+
+
+def test_los_datasets_no_se_descargan_si_ya_estan(plan_listo):
+    """`gpaw-data` entra como dependencia: bajarlos siempre era gastar red."""
+    paso = next(s for s in plan_listo.steps if s.name == "datasets-paw")
+    script = paso.argv[-1]
+    assert script.startswith("test -f "), "primero se comprueba"
+    assert "Cs.PBE.gz" in script, "se mira un elemento concreto, no solo el directorio"
+    assert "||" in script and "install-data" in script, "y solo si falta se descarga"
