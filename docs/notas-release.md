@@ -1,9 +1,9 @@
-# Monitor DFT 0.6.1
+# Monitor DFT 0.7.0
 
-**El binario ya puede lanzar cálculos DFT.** Hasta ahora no podía: el runner
-necesita el pipeline en fuente y este no viajaba dentro del paquete, así que una
-instalación empaquetada cribaba y monitorizaba pero no ejecutaba ni un cálculo.
-Además, GPAW se instala ahora desde la propia app.
+**El pipeline ya no supone que todo es cúbico.** Genera las fases que una
+perovskita de haluro admite de verdad, deja que compitan en energía y **mide**
+en cuál quedó el material en vez de decidirlo por decreto. Sobre CsPbI₃ la fase
+cúbica pierde por 124 meV por fórmula, que es lo que dice el experimento.
 
 Interfaz gráfica del pipeline de cribado de perovskitas: genera candidatos, los
 criba con la cascada HTS, prepara y lanza los cálculos DFT, y sigue el progreso
@@ -13,16 +13,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.6.1>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.0>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.6.1-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.6.1-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.6.1-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.6.1-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.7.0-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.0-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.7.0-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.7.0-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -30,13 +30,13 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.6.1-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.7.0-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.6.1-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.6.1-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.7.0-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.7.0-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
@@ -55,10 +55,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.6.1-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.7.0-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.6.1-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.7.0-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -71,8 +71,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.6.1-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.6.1-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.7.0-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.7.0-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -80,7 +80,7 @@ tar xzf dft-monitor-desktop-0.6.1-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.6.1-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.7.0-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
@@ -92,8 +92,8 @@ exige un token en `monitor.auth.token`.
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.6.1-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.6.1-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.7.0-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.7.0-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -103,6 +103,34 @@ sha256sum -c SHA256SUMS
 ```
 
 ## Qué trae
+
+### Nuevo en 0.7.0
+
+- **Fases candidatas en vez de una supuesta.** A partir de la perovskita cúbica
+  se generan las distorsiones que esta familia admite —los sistemas de
+  inclinación de Glazer— y se identifica el grupo espacial con spglib sobre la
+  estructura ya relajada. La fase se **reporta**, no se asume: se reproducen
+  Pm-3m, I4/mcm, P4/mbm, R-3c y Pnma desde la notación, sin tablas de Wyckoff.
+- **Por qué importaba.** El pipeline construía siempre la cúbica. Para CsPbI₃
+  esa es la fase α, que solo existe por encima de 330 °C; a temperatura ambiente
+  el material está en otra, con otro bandgap. El propio código ya avisaba de
+  ello sin poder demostrarlo.
+- **El potencial elige la forma; la geometría calibrada, el tamaño.** Medido: el
+  potencial ordena bien las fases, pero la celda que devuelve queda un 4.6 % por
+  encima del experimento, y eso mueve el bandgap 0.75 eV. Se toma de cada uno lo
+  que hace bien, y ambos parámetros de red quedan registrados para poder
+  discutirlos.
+- **La contracción del enlace B–X depende del haluro**, no solo del metal.
+  Aplicar el factor de los yoduros a bromuros y cloruros comprimía la celda un
+  2 % e **invertía el orden de los bandgaps** Cl > Br > I. Los cinco parámetros
+  de red de referencia caen ahora dentro del 0.1 % del experimental.
+- **El germanio se expande en lugar de contraerse**: su par solitario 4s empuja
+  los haluros más lejos de lo que predice el radio iónico. CsGeBr₃ pasa de
+  0.111 eV a 0.784.
+- **GLLB-SC para el bandgap**, que calcula explícitamente la discontinuidad de
+  la derivada —el término que a PBE le falta— en vez de parchearla. El error
+  medio frente al experimento baja del 58.6 % al **28.7 %** sin ningún
+  desplazamiento empírico.
 
 ### Nuevo en 0.6.0
 
@@ -191,6 +219,24 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.7.0
+
+- **El cribado comparaba magnitudes distintas.** El bandgap predicho está en la
+  escala del cálculo y la ventana fotovoltaica en la del experimento. La
+  consecuencia no era gradual sino total: de 3 793 candidatos, **los 3 793** se
+  descartaban. El protocolo cribaba, no encontraba nada elegible y se declaraba
+  terminado sin lanzar un solo cálculo.
+- **El enumerador del protocolo se saltaba la cuantización de composiciones.**
+  La corrección de 0.5.0 solo cubría uno de los dos caminos, y el que faltaba
+  era justo el que gasta el DFT: 30 000 composiciones colapsaban en 1 998
+  estructuras. El espacio real pasa de 86 035 candidatos a 3 793 estructuras
+  distintas.
+- **La validación cruzada repartía duplicados entre folds**, así que medía
+  reconocimiento de repetidos y no generalización.
+- Un modelo entrenado en otra escala **ya no se corrige como si fuera de la
+  actual**: declara en cuál se entrenó, y si no coincide se avisa en vez de
+  producir un número sin sentido con aspecto de estar bien.
 
 ### Corregido en 0.6.1
 
