@@ -990,3 +990,23 @@ def test_los_imports_perezosos_estan_declarados_en_el_spec():
         assert f'"{modulo}"' in spec, (
             f"'{modulo}' se importa de forma perezosa en buho/ pero no está en "
             "hiddenimports: el binario saldría sin él y fallaría en silencio")
+
+
+def test_ci_instala_lo_que_el_spec_necesita():
+    """La lista de `pip install` de CI y el spec no pueden desincronizarse.
+
+    Empaquetar no puede incluir lo que no está instalado: v0.7.0 salió sin
+    spglib aunque el spec lo declarara en `hiddenimports`, porque el workflow
+    tiene su propia lista escrita a mano y no lo llevaba. La identificación de
+    fase —lo que anunciaba esa versión— no funcionaba en ningún binario.
+    """
+    spec = (ROOT / "packaging" / "dft-monitor-engine.spec").read_text(encoding="utf-8")
+    wf = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+    # Terceros que el binario necesita de verdad y que no arrastra otro paquete.
+    imprescindibles = ("spglib",)
+    for modulo in imprescindibles:
+        assert f'"{modulo}"' in spec, f"{modulo} no está en el spec"
+        assert modulo in wf, (
+            f"'{modulo}' está en el spec pero CI no lo instala: el binario "
+            "saldría sin él y la funcionalidad fallaría en silencio")

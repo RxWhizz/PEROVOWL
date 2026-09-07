@@ -92,13 +92,19 @@ jobs:
             sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
           fi
           python -m pip install --upgrade pip
+          # Esta lista tiene que cubrir lo que el spec de PyInstaller necesita:
+          # empaquetar no puede incluir lo que no esta instalado. spglib faltaba
+          # y v0.7.0 salio sin el, con la identificacion de fase inservible
+          # aunque `hiddenimports` lo declarara. Hay un test que compara esta
+          # lista con el spec para que no vuelva a desincronizarse.
+          #
           # scikit-learn acotado a 1.8.x: los models/*.pkl se serializaron con
           # esa versión y 1.9 no los despickliza.
           python -m pip install \
             "fastapi>=0.110" "uvicorn[standard]>=0.27" "httpx>=0.27" \
             "psutil>=5.9" "pyyaml>=6.0" "itsdangerous>=2.1" \
             "numpy>=1.26" "pandas>=2.0" "scipy>=1.12" "scikit-learn>=1.8,<1.9" \
-            "ase>=3.23" pyinstaller python-dotenv
+            "ase>=3.23" "spglib>=2.0" pyinstaller python-dotenv
 
       - uses: subosito/flutter-action@v2
         with:
