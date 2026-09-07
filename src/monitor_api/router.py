@@ -1233,6 +1233,7 @@ async def quickstart_run(request: Request, body: QuickStartRequest | None = None
         raise HTTPException(status_code=422, detail="max_rounds debe ser positivo")
 
     resultado = arrancar(
+        poller=get_poller(request),
         max_rounds=body.max_rounds,
         use_mlff=body.use_mlff,
         dry_run=body.dry_run,

@@ -1,4 +1,4 @@
-# Monitor DFT 0.6.0
+# Monitor DFT 0.6.1
 
 **El binario ya puede lanzar cálculos DFT.** Hasta ahora no podía: el runner
 necesita el pipeline en fuente y este no viajaba dentro del paquete, así que una
@@ -13,16 +13,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.6.0>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.6.1>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.6.0-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.6.0-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.6.0-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.6.0-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.6.1-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.6.1-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.6.1-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.6.1-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -30,13 +30,13 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.6.0-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.6.1-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.6.0-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.6.0-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.6.1-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.6.1-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
@@ -55,10 +55,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.6.0-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.6.1-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.6.0-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.6.1-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -71,8 +71,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.6.0-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.6.0-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.6.1-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.6.1-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -80,7 +80,7 @@ tar xzf dft-monitor-desktop-0.6.0-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.6.0-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.6.1-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
@@ -92,8 +92,8 @@ exige un token en `monitor.auth.token`.
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.6.0-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.6.0-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.6.1-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.6.1-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -191,6 +191,16 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.6.1
+
+- **El reparto medido no surtía efecto hasta reiniciar.** El arranque rápido
+  medía la máquina y escribía los slots en la configuración, pero esa se lee al
+  abrir el proceso: el runner que ese mismo arranque lanzaba seguía usando los
+  valores con los que se abrió la app. Medido sobre el binario 0.6.0 publicado —
+  el fichero decía 19 trabajos en paralelo y el motor en marcha creía 2. Es lo
+  contrario de lo que promete el botón, así que si usaste el arranque rápido en
+  0.6.0, **actualiza**.
 
 ### Corregido en 0.6.0
 

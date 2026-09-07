@@ -371,3 +371,46 @@ def test_el_bench_encuentra_su_script_tras_materializar(tmp_path, monkeypatch):
     assert not bench._script().is_file()
     paths.materializar_pipeline(version="9.9.9")
     assert bench._script().is_file()
+
+
+# ── El reparto tiene que surtir efecto sin reiniciar ─────────────────────────
+
+class _PollerFalso:
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+
+def test_el_reparto_se_aplica_al_poller_vivo(tmp_path, monkeypatch):
+    """Escribirlo en el YAML no basta: la configuración se lee al arrancar.
+
+    Medido sobre el binario 0.6.0 publicado: el fichero decía 19 slots y el
+    motor en marcha seguía creyendo 2. El runner que lance ese mismo arranque
+    usaría 2, que es lo contrario de lo que promete el botón.
+    """
+    paths.set_data_root(tmp_path)
+    monkeypatch.setenv("DFT_MONITOR_CONFIG_DIR", str(tmp_path / "configs"))
+    quickstart.reset_for_tests()
+    monkeypatch.setattr(quickstart, "_faltantes", lambda: [{"id": "x", "titulo": "x"}])
+    poller = _PollerFalso({"runner_slots": 2, "runner_cores": 8})
+
+    r = quickstart.arrancar(poller=poller, con_benchmark=False)
+
+    paso = next(p for p in r["pasos"] if p["paso"] == "configuracion")
+    assert paso["detalle"]["aplicado_en_caliente"] is True
+    assert poller.cfg["runner_slots"] == paso["detalle"]["nuevo"]["runner_slots"]
+    assert poller.cfg["runner_cores"] == paso["detalle"]["nuevo"]["runner_cores"]
+    assert poller.cfg["runner_slots"] != 2, "no puede quedarse con el valor de arranque"
+
+
+def test_sin_poller_se_sigue_pudiendo_arrancar(tmp_path, monkeypatch):
+    """La CLI llama sin poller; escribir el YAML sigue siendo útil."""
+    paths.set_data_root(tmp_path)
+    monkeypatch.setenv("DFT_MONITOR_CONFIG_DIR", str(tmp_path / "configs"))
+    quickstart.reset_for_tests()
+    monkeypatch.setattr(quickstart, "_faltantes", lambda: [{"id": "x", "titulo": "x"}])
+
+    r = quickstart.arrancar(con_benchmark=False)
+
+    paso = next(p for p in r["pasos"] if p["paso"] == "configuracion")
+    assert paso["ok"] is True
+    assert paso["detalle"]["aplicado_en_caliente"] is False

@@ -78,6 +78,21 @@ def _persistir_reparto(reparto: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _aplicar_en_caliente(poller: Any, reparto: dict[str, Any]) -> bool:
+    """Mete el reparto en la configuracion viva del poller.
+
+    `poller.cfg` es la seccion `monitor:` que `main.py` le paso al arrancar, y
+    es de donde salen `runner_slots`/`runner_cores` cuando se lanza un runner.
+    Sin esto habria que reiniciar la app para que la medicion sirviera de algo.
+    """
+    cfg = getattr(poller, "cfg", None)
+    if not isinstance(cfg, dict):
+        return False
+    cfg["runner_slots"] = int(reparto["runner_slots"])
+    cfg["runner_cores"] = int(reparto["runner_cores"])
+    return True
+
+
 def _faltantes() -> list[dict[str, Any]]:
     """Capacidades requeridas que no estan listas."""
     from . import setup
@@ -149,6 +164,7 @@ def estado() -> dict[str, Any]:
 
 def arrancar(
     *,
+    poller: Any = None,
     max_rounds: int | None = None,
     use_mlff: bool | None = None,
     dry_run: bool = False,
@@ -186,7 +202,14 @@ def arrancar(
     # 2 - Fijar el reparto
     if sondeo is not None:
         try:
-            pasos.append(_paso("configuracion", True, _persistir_reparto(sondeo["reparto"])))
+            detalle = _persistir_reparto(sondeo["reparto"])
+            # Escribirlo no basta: la configuracion se lee al arrancar el
+            # proceso, asi que el runner que este arranque lance seguiria usando
+            # los valores con los que se abrio la app. Medir 19 slots y correr
+            # con 2 es exactamente lo contrario de lo que promete el boton.
+            detalle["aplicado_en_caliente"] = _aplicar_en_caliente(
+                poller, sondeo["reparto"])
+            pasos.append(_paso("configuracion", True, detalle))
         except (OSError, RuntimeError) as exc:
             pasos.append(_paso("configuracion", False, error=str(exc)))
 
