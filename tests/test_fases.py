@@ -317,3 +317,88 @@ def test_una_fase_que_falla_no_tumba_la_seleccion(padre_cubico, caplog):
     assert r["ok"] is True
     assert r["fase"] == "cubica"
     assert "se descarta" in caplog.text
+
+
+# ── El enganche a la preparación de trabajos DFT ─────────────────────────────
+
+def _preparador(tmp_path, cfg, selector=None):
+    from buho.dft_jobs.prepare_relaxation_jobs import RelaxationJobPreparer
+
+    return RelaxationJobPreparer(cfg, project_root=tmp_path, selector_fase=selector)
+
+
+def _candidato(gen):
+    return gen._make_candidate(
+        A_sp=["Cs"], B_sp=["Pb"], X_sp=["I"],
+        A_f={"Cs": 1.0}, B_f={"Pb": 1.0}, X_f={"I": 1.0}, mode="pure")
+
+
+def test_sin_selector_se_prepara_la_cubica_de_siempre(tmp_path, cfg):
+    """Elegir fase necesita un potencial; sin él, el comportamiento no cambia."""
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+    prep = _preparador(tmp_path, cfg)
+    hechos = prep.prepare([_candidato(gen)], out_root=tmp_path / "jobs")
+
+    assert len(hechos) == 1
+    assert not (hechos[0] / "fases.json").exists()
+
+
+def test_con_selector_va_a_dft_la_fase_elegida(tmp_path, cfg, candidatas):
+    """El pipeline construía siempre Pm-3m. Para CsPbI₃ esa es la fase α, que
+    solo existe por encima de 330 °C: a temperatura ambiente el material está en
+    otra, con otro bandgap."""
+    import json
+
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+    elegida = candidatas["ortorrombica"]["atoms"]
+
+    def selector(cand, atoms, meta):
+        return {"ok": True, "fase": "ortorrombica", "glazer": "a-a-c+",
+                "grupo_espacial": {"simbolo": "Pnma", "numero": 62},
+                "convergido": False, "a_semilla_A": 6.1834,
+                "a_relajado_mlff_A": 6.3210, "atoms": elegida,
+                "ranking": [{"fase": "ortorrombica", "dE_meV_por_formula": 0.0}]}
+
+    prep = _preparador(tmp_path, cfg, selector)
+    hechos = prep.prepare([_candidato(gen)], out_root=tmp_path / "jobs")
+
+    guardado = json.loads((hechos[0] / "fases.json").read_text(encoding="utf-8"))
+    assert guardado["fase"] == "ortorrombica"
+    assert guardado["grupo_espacial"]["numero"] == 62
+    assert "atoms" not in guardado, "el JSON registra, no serializa estructuras"
+
+
+def test_un_selector_que_revienta_no_tumba_la_ronda(tmp_path, cfg, caplog):
+    """Sin fase elegida se sigue con la cúbica, que es lo que había antes."""
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+
+    def selector(cand, atoms, meta):
+        raise RuntimeError("el potencial no cargó")
+
+    prep = _preparador(tmp_path, cfg, selector)
+    with caplog.at_level("WARNING"):
+        hechos = prep.prepare([_candidato(gen)], out_root=tmp_path / "jobs")
+
+    assert len(hechos) == 1
+    assert "se usa la cubica" in caplog.text
+
+
+def test_un_selector_que_no_elige_nada_tampoco(tmp_path, cfg, caplog):
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+    prep = _preparador(
+        tmp_path, cfg,
+        lambda c, a, m: {"ok": False, "motivo": "ninguna fase relajo"})
+
+    with caplog.at_level("WARNING"):
+        hechos = prep.prepare([_candidato(gen)], out_root=tmp_path / "jobs")
+
+    assert len(hechos) == 1
+    assert "ninguna fase relajo" in caplog.text

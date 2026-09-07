@@ -27,6 +27,7 @@ Uso:
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import string
 import sys
@@ -40,6 +41,8 @@ import yaml
 from buho.generator.heuristic_generator import GeneratedCandidate
 from buho.scoring.pre_dft_score import ScoredCandidate
 from buho.structure.build_abx3 import ABX3StructureBuilder
+
+log = logging.getLogger(__name__)
 
 # Usa string.Template ($var) para evitar conflictos con llaves de Python en el código generado
 _INPUT_TEMPLATE = string.Template('''\
@@ -212,6 +215,7 @@ class RelaxationJobPreparer:
         project_root: Optional[Path] = None,
         n_cores: int = 1,
         python: str = "python3",
+        selector_fase=None,
     ):
         self._cfg = config
         self._root = _raiz_o_fallo(project_root, "prepare_relaxation_jobs")
@@ -219,6 +223,12 @@ class RelaxationJobPreparer:
         self._python = python
         self._dft = config.get("dft_basic", {})
         self._builder = ABX3StructureBuilder(config, random_seed=config.get("random_seed", 42))
+        # Selector de fase. Sin el, se prepara la cubica de siempre --- el
+        # comportamiento anterior--- porque elegir fase necesita un potencial
+        # interatomico y no todas las instalaciones lo tienen. Con el, la
+        # estructura que va a DFT es la fase de menor energia, reescalada al
+        # tamano de la semilla (ver buho.structure.fases.seleccionar_fase).
+        self._selector_fase = selector_fase
 
         # Detectar si existe el config de GPAW del proyecto
         self._gpaw_config = self._root / "configs" / "default_params.yaml"
@@ -250,6 +260,7 @@ class RelaxationJobPreparer:
                 continue
 
             atoms, meta = self._builder.build(c, out_dir=job_dir, export=True)
+            atoms, meta = self._elegir_fase(c, atoms, meta, job_dir)
             self._write_input(job_dir, c, atoms)
             self._write_run_sh(job_dir, c)
             self._write_status_pending(job_dir, c)
@@ -265,6 +276,54 @@ class RelaxationJobPreparer:
         return prepared
 
     # ── Helpers ─────────────────────────────────────────────────────────────────
+
+    def _elegir_fase(self, candidato, atoms, meta: dict, job_dir: Path):
+        """Sustituye la cubica por la fase de menor energia, si hay selector.
+
+        El pipeline construia siempre Pm-3m. Para CsPbI3 eso es la fase alfa,
+        que solo existe por encima de 330 C: a temperatura ambiente el material
+        esta en otra, con otro bandgap. Medido con el potencial, la cubica queda
+        124 meV/f.u. por encima de la ortorrombica.
+
+        Un fallo aqui no puede tumbar la ronda: se avisa y se sigue con la
+        cubica, que es lo que habia antes.
+        """
+        if self._selector_fase is None:
+            return atoms, meta
+        try:
+            r = self._selector_fase(candidato, atoms, meta)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("%s: la seleccion de fase fallo (%s: %s); se usa la cubica",
+                        candidato.candidate_id, type(exc).__name__, exc)
+            return atoms, meta
+        if not r or not r.get("ok") or r.get("atoms") is None:
+            log.warning("%s: sin fase elegida (%s); se usa la cubica",
+                        candidato.candidate_id, (r or {}).get("motivo", "sin motivo"))
+            return atoms, meta
+
+        grupo = r.get("grupo_espacial") or {}
+        meta = dict(meta)
+        meta.update({
+            "fase": r.get("fase"),
+            "glazer": r.get("glazer"),
+            "grupo_espacial": grupo.get("simbolo"),
+            "grupo_espacial_numero": grupo.get("numero"),
+            # El tamano viene de la semilla y la forma del potencial: dejar los
+            # dos a la vista es lo que permite discutir de donde sale la celda.
+            "a_semilla_A": r.get("a_semilla_A"),
+            "a_relajado_mlff_A": r.get("a_relajado_mlff_A"),
+            "fase_convergida": r.get("convergido"),
+            "fases_evaluadas": r.get("ranking"),
+        })
+        try:
+            (job_dir / "fases.json").write_text(
+                json.dumps({k: v for k, v in r.items() if k != "atoms"},
+                           indent=2, ensure_ascii=False, default=str),
+                encoding="utf-8")
+        except OSError as exc:
+            log.warning("%s: no se pudo guardar fases.json: %s",
+                        candidato.candidate_id, exc)
+        return r["atoms"], meta
 
     def _should_skip(self, job_dir: Path) -> bool:
         status_file = job_dir / "status.json"
