@@ -1,0 +1,192 @@
+{
+  "generado": "2026-09-07T13:06:54.975618Z",
+  "metodo": "SCF PBE (ecut=300 eV, kpts=4^3 gamma-centrada) sobre la perovskita cubica de referencia, SOC perturbativo post-SCF, comparado con el bandgap experimental de esa fase.",
+  "modelo": "Eg_exp ~= Eg_pbe_soc + c + delta_B + delta_X. Se ajusta por minimos cuadrados con los compuestos de fase no cubica pesados a 0.3. El desplazamiento NO es una constante por elemento B: medido, CsPbI3 y CsPbBr3 difieren en 0.83 eV con el mismo B.",
+  "aviso": "Calibrado sobre haluros puros de Cs. Aplicarlo a composiciones mixtas supone que el desplazamiento interpola linealmente con las fracciones de cada sitio, que es una aproximacion sin comprobar.",
+  "ajuste": {
+    "columnas": [
+      "c",
+      "B:Pb",
+      "B:Sn",
+      "X:Br",
+      "X:Cl"
+    ],
+    "coeficientes": [
+      1.723,
+      -0.298,
+      -0.5871,
+      0.6669,
+      1.1338
+    ],
+    "ancla_X": "I",
+    "B_base": "Ge"
+  },
+  "errores_pct": {
+    "error_relativo_medio_sin_corregir": 91.2,
+    "error_relativo_medio_corregido": 4.8
+  },
+  "detalle": [
+    {
+      "formula": "CsPbI3",
+      "B": "Pb",
+      "X": "I",
+      "a_lat_A": 6.1834,
+      "ecut": 300,
+      "kpts": [
+        4,
+        4,
+        4
+      ],
+      "Eg_pbe_eV": 1.0975,
+      "Eg_pbe_soc_eV": 0.3011,
+      "Eg_exp_eV": 1.73,
+      "fase_firme": true,
+      "fase": "alfa cubica (negra); la delta amarilla de RT tiene ~2.8 eV",
+      "residuo_eV": 1.4289
+    },
+    {
+      "formula": "CsPbBr3",
+      "B": "Pb",
+      "X": "Br",
+      "a_lat_A": 5.8716,
+      "ecut": 300,
+      "kpts": [
+        4,
+        4,
+        4
+      ],
+      "Eg_pbe_eV": 1.4793,
+      "Eg_pbe_soc_eV": 0.1624,
+      "Eg_exp_eV": 2.36,
+      "fase_firme": true,
+      "fase": "cubica de alta temperatura",
+      "residuo_eV": 2.1976
+    },
+    {
+      "formula": "CsPbCl3",
+      "B": "Pb",
+      "X": "Cl",
+      "a_lat_A": 5.604,
+      "ecut": 300,
+      "kpts": [
+        4,
+        4,
+        4
+      ],
+      "Eg_pbe_eV": 1.8812,
+      "Eg_pbe_soc_eV": 0.5808,
+      "Eg_exp_eV": 3.03,
+      "fase_firme": true,
+      "fase": "cubica de alta temperatura",
+      "residuo_eV": 2.4492
+    },
+    {
+      "formula": "CsSnI3",
+      "B": "Sn",
+      "X": "I",
+      "a_lat_A": 6.2192,
+      "ecut": 300,
+      "kpts": [
+        4,
+        4,
+        4
+      ],
+      "Eg_pbe_eV": 0.319,
+      "Eg_pbe_soc_eV": 0.1283,
+      "Eg_exp_eV": 1.31,
+      "fase_firme": true,
+      "fase": "B-gamma (perovskita negra)",
+      "residuo_eV": 1.1817
+    },
+    {
+      "formula": "CsSnBr3",
+      "B": "Sn",
+      "X": "Br",
+      "a_lat_A": 5.8027,
+      "ecut": 300,
+      "kpts": [
+        4,
+        4,
+        4
+      ],
+      "Eg_pbe_eV": 0.3896,
+      "Eg_pbe_soc_eV": 0.0166,
+      "Eg_exp_eV": 1.75,
+      "fase_firme": true,
+      "fase": "cubica",
+      "residuo_eV": 1.7334
+    },
+    {
+      "formula": "CsSnCl3",
+      "B": "Sn",
+      "X": "Cl",
+      "a_lat_A": 5.5674,
+      "ecut": 300,
+      "kpts": [
+        4,
+        4,
+        4
+      ],
+      "Eg_pbe_eV": 0.8148,
+      "Eg_pbe_soc_eV": 0.4519,
+      "Eg_exp_eV": 2.8,
+      "fase_firme": false,
+      "fase": "monoclinica a RT; el valor no es de la fase cubica",
+      "residuo_eV": 2.3481
+    },
+    {
+      "formula": "CsGeI3",
+      "B": "Ge",
+      "X": "I",
+      "a_lat_A": 5.86,
+      "ecut": 300,
+      "kpts": [
+        4,
+        4,
+        4
+      ],
+      "Eg_pbe_eV": 0.3469,
+      "Eg_pbe_soc_eV": 0.0728,
+      "Eg_exp_eV": 1.63,
+      "fase_firme": false,
+      "fase": "romboedrica a RT",
+      "residuo_eV": 1.5572
+    },
+    {
+      "formula": "CsGeBr3",
+      "B": "Ge",
+      "X": "Br",
+      "a_lat_A": 5.38,
+      "ecut": 300,
+      "kpts": [
+        4,
+        4,
+        4
+      ],
+      "Eg_pbe_eV": 0.1107,
+      "Eg_pbe_soc_eV": 0.051,
+      "Eg_exp_eV": 2.32,
+      "fase_firme": false,
+      "fase": "romboedrica a RT",
+      "residuo_eV": 2.269
+    },
+    {
+      "formula": "CsGeCl3",
+      "B": "Ge",
+      "X": "Cl",
+      "a_lat_A": 5.08,
+      "ecut": 300,
+      "kpts": [
+        4,
+        4,
+        4
+      ],
+      "Eg_pbe_eV": 0.204,
+      "Eg_pbe_soc_eV": 0.0565,
+      "Eg_exp_eV": 3.2,
+      "fase_firme": false,
+      "fase": "romboedrica a RT; valor con dispersion en la literatura",
+      "residuo_eV": 3.1435
+    }
+  ]
+}

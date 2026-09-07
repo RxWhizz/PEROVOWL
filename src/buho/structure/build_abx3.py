@@ -54,7 +54,28 @@ _ORG_WARNING = (
 #: que es peor que el error original. Con el radio de Ge (0.73 Å, mucho menor
 #: que Pb/Sn) la suma de radios ya cae cerca de lo razonable. Un elemento sin
 #: entrada aquí no se contrae.
-BOND_CONTRACTION: dict[str, float] = {"Pb": 0.912, "Sn": 0.920}
+#: El factor depende de la pareja B-X, no solo de B. Estaba calibrado solo con
+#: yoduros y aplicado a toda la familia, lo que comprimia los bromuros un 2.1 %
+#: y los cloruros un 2.4 % respecto a su parametro de red experimental. En estas
+#: perovskitas comprimir la celda aumenta el solapamiento B-X, sube el maximo de
+#: la banda de valencia y CIERRA el gap: el error de geometria empujaba a los
+#: bromuros por debajo de los yoduros, invirtiendo la tendencia Cl > Br > I que
+#: es de las mas solidas de esta familia.
+#:
+#: Cada valor es a_experimental / (2*(r_B + r_X)) de la fase cubica.
+BOND_CONTRACTION: dict[str, dict[str, float]] = {
+    "Pb": {"I": 0.912, "Br": 0.932, "Cl": 0.934},
+    "Sn": {"I": 0.920, "Br": 0.924, "Cl": 0.931},
+    # Ge sin contraer: no hay referencia cubica fiable (a temperatura ambiente
+    # es romboedrico por el par solitario 4s) y con el radio de Ge la suma ya
+    # cae cerca de lo razonable. Aplicarle el factor de Pb/Sn lo sobrecorrige
+    # hasta dejar el calculo metalico.
+}
+
+#: Cuando falta la pareja exacta no se inventa un factor: 1.0 deja la celda como
+#: la da la suma de radios, que es el comportamiento de siempre para lo no
+#: calibrado.
+CONTRACCION_POR_DEFECTO = 1.0
 
 
 class ABX3StructureBuilder:
@@ -75,10 +96,24 @@ class ABX3StructureBuilder:
         # Contracción del enlace B–X por elemento; ver BOND_CONTRACTION. Un
         # dict vacío en la config reproduce el comportamiento anterior.
         contraccion = st.get("bond_contraction")
-        self._bond_contraction: dict[str, float] = (
+        self._bond_contraction: dict[str, dict[str, float]] = (
             dict(contraccion) if isinstance(contraccion, dict) else dict(BOND_CONTRACTION)
         )
         self._seed = random_seed
+
+    def _contraccion(self, b_site: str, x_site: str) -> float:
+        """Factor de contracción de la pareja B–X.
+
+        Acepta el formato antiguo `{B: factor}` además del nuevo
+        `{B: {X: factor}}`: una configuración de usuario escrita para la versión
+        anterior debe seguir funcionando en vez de reventar al indexar.
+        """
+        entrada = self._bond_contraction.get(b_site)
+        if isinstance(entrada, dict):
+            return float(entrada.get(x_site, CONTRACCION_POR_DEFECTO))
+        if entrada is None:
+            return CONTRACCION_POR_DEFECTO
+        return float(entrada)
 
     def build(
         self,
@@ -155,11 +190,16 @@ class ABX3StructureBuilder:
         # BOND_CONTRACTION). El exceso no es inocuo: sobre CsPbI3, con la celda
         # dilatada un 9.7 % el Eg de PBE sale 1.78 eV en vez de 1.09 eV. Casi
         # 0.7 eV de error — más que el que introduce ignorar el acoplamiento
-        # espín-órbita. Se pondera por fracción igual que los radios, para que
-        # una composición con el sitio B mezclado interpole entre sus factores.
+        # espín-órbita.
+        #
+        # Se pondera por las fracciones de AMBOS sitios: el factor depende de la
+        # pareja B–X, y aplicar el de un yoduro a un bromuro comprimía la celda
+        # un 2 %, que basta para invertir el orden de los gaps entre haluros.
         factor = sum(
-            fracciones_reales["B"].get(sp, 0.0) * self._bond_contraction.get(sp, 1.0)
-            for sp in candidate.B_site_species
+            fracciones_reales["B"].get(b, 0.0) * fracciones_reales["X"].get(x, 0.0)
+            * self._contraccion(b, x)
+            for b in candidate.B_site_species
+            for x in candidate.X_site_species
         )
         a0 = lattice_est(r_B_eff, r_X_eff) / math.sqrt(2.0) * factor
 

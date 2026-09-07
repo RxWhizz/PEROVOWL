@@ -115,3 +115,9 @@ openapitools.json
 !README.md
 # Las notas de cada release salen de aqui: tiene que viajar con el codigo.
 !docs/notas-release.md
+
+# Logs que GPAW escribe en el directorio de trabajo al calibrar. Son salida de
+# diagnostico de un calculo concreto, no artefactos del proyecto.
+eg_scale_*.txt
+conv_*.txt
+bootstrap_*.txt

@@ -1035,13 +1035,24 @@ def test_scissor_no_recorta_gaps_negativos():
 
 
 def test_contraccion_reproduce_las_redes_experimentales():
-    """a = 2(r_B+r_X) sobreestima el enlace B-X ~9%; la contraccion lo corrige."""
+    """a = 2(r_B+r_X) sobreestima el enlace B-X ~9%; la contraccion lo corrige.
+
+    El factor depende de la pareja B-X, no solo de B: calibrado con yoduros y
+    aplicado a los bromuros comprimia la celda un 2.1 %, suficiente para cerrar
+    el gap e invertir el orden Cl > Br > I.
+    """
     from buho.structure.build_abx3 import BOND_CONTRACTION
     from ml_surrogate.features import IONIC_RADII as R
 
-    for b_site, a_exp in (("Pb", 6.18), ("Sn", 6.22)):
-        a = 2.0 * (R[b_site] + R["I"]) * BOND_CONTRACTION[b_site]
-        assert abs(a / a_exp - 1.0) < 0.01, f"{b_site}: a={a:.3f} vs exp {a_exp}"
+    experimental = {
+        ("Pb", "I"): 6.18, ("Pb", "Br"): 5.87, ("Pb", "Cl"): 5.605,
+        ("Sn", "I"): 6.22, ("Sn", "Br"): 5.80,
+    }
+    for (b_site, x_site), a_exp in experimental.items():
+        factor = BOND_CONTRACTION[b_site][x_site]
+        a = 2.0 * (R[b_site] + R[x_site]) * factor
+        assert abs(a / a_exp - 1.0) < 0.01, (
+            f"Cs{b_site}{x_site}3: a={a:.3f} vs exp {a_exp}")
 
 
 def test_ge_no_se_contrae():

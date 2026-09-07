@@ -35,6 +35,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from buho import eg_scale
 from buho.filters.physical_filters import PhysicalFilter
 from buho.generator.heuristic_generator import GeneratedCandidate
 from buho.mlff_runtime import MLFFUnavailableError, resolve as resolve_mlff
@@ -347,7 +348,8 @@ class ScreeningCascade:
                 "riesgo_politipo": self._filter.riesgo_politipo(c.tolerance_t),
                 "oct_factor": c.oct_factor,
                 "vol_est_A3": c.vol_est_A3,
-                "Eg_surrogate_eV": None, "Eg_sigma_eV": None,
+                "Eg_surrogate_eV": None, "Eg_exp_eV": None,
+                "eg_scale_delta_eV": None, "Eg_sigma_eV": None,
                 "band_score": 0.0, "in_pv_window": None,
                 "Eg_gnn_eV": None, "Eform_eV_atom": None,
                 "Eform_std_eV_atom": None, "is_stable": None,
@@ -371,10 +373,33 @@ class ScreeningCascade:
                 warnings.warn(f"Cascade Tier1 falló: {e}")
                 means = [float("nan")] * len(passed)
                 stds = [float("nan")] * len(passed)
-            for row, mu, sd in zip(rows, means, stds):
-                eg = float(mu)
+            # La correccion solo vale para un modelo entrenado en la escala que
+            # la calibracion asume. Aplicarla a uno viejo no es corregir a
+            # medias: mueve las predicciones a un rango arbitrario y el cribado
+            # sigue descartandolo todo, ahora por el extremo contrario y con
+            # aspecto de estar bien.
+            corregir_escala = eg_scale.aplicable_a(sur)
+            if not corregir_escala:
+                log.warning(
+                    "el surrogate no declara la escala '%s': se criba con el "
+                    "valor calculado sin llevarlo a escala experimental, y la "
+                    "ventana PV no es comparable. Reentrena para corregirlo.",
+                    eg_scale.ESCALA,
+                )
+
+            for row, cand, mu, sd in zip(rows, passed, means, stds):
+                eg_calc = float(mu)
                 sigma = float(sd) if not math.isnan(float(sd)) else 0.0
-                row["Eg_surrogate_eV"] = round(eg, 4)
+                # El surrogate predice en la escala del calculo (PBE+SOC); la
+                # ventana PV esta definida sobre el gap medido. Se guardan los
+                # dos valores y el desplazamiento: convertir en silencio dejaria
+                # sin forma de auditar de donde sale el numero que decide.
+                eg = (eg_scale.a_experimental(
+                          eg_calc, cand.fractions["B"], cand.fractions["X"])
+                      if corregir_escala else eg_calc)
+                row["Eg_surrogate_eV"] = round(eg_calc, 4)
+                row["Eg_exp_eV"] = round(eg, 4)
+                row["eg_scale_delta_eV"] = round(eg - eg_calc, 4)
                 row["Eg_sigma_eV"] = round(float(sd), 4)
                 row["band_score"] = round(_band_score(eg), 4)
                 row["in_pv_window"] = bool(self._pv_min <= eg <= self._pv_max)
@@ -476,7 +501,8 @@ class ScreeningCascade:
                 "riesgo_politipo": self._filter.riesgo_politipo(c.tolerance_t),
                 "oct_factor": c.oct_factor,
                 "vol_est_A3": c.vol_est_A3,
-                "Eg_surrogate_eV": None, "Eg_sigma_eV": None,
+                "Eg_surrogate_eV": None, "Eg_exp_eV": None,
+                "eg_scale_delta_eV": None, "Eg_sigma_eV": None,
                 "band_score": 0.0, "in_pv_window": None,
                 "Eg_gnn_eV": None, "Eform_eV_atom": None,
                 "Eform_std_eV_atom": None, "is_stable": None,

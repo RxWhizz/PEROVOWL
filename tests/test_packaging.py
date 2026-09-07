@@ -81,8 +81,9 @@ ANCLAJE_PERMITIDO = {
     "buho/mlff_runtime.py",
     "buho/generator/heuristic_generator.py",
     "ml_surrogate/config.py",
-    # Consulta `sys._MEIPASS` primero; esto es el fallback desde fuentes.
+    # Consultan `sys._MEIPASS` primero; esto es el fallback desde fuentes.
     "buho/bandgap_scissor.py",
+    "buho/eg_scale.py",
 }
 
 

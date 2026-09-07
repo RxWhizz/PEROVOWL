@@ -260,57 +260,64 @@ class HeuristicGenerator:
     # ── Sampling de fracciones (discreto vs continuo) ─────────────────────────────
 
     def _binary_fracs(self, sitio: str = "A") -> list[float]:
-        """Fracciones para una mezcla binaria (la otra es 1-f)."""
+        """Fracciones para una mezcla binaria (la otra es 1-f).
+
+        El ajuste a la rejilla de la supercelda se aplica en los DOS modos.
+        Hacerlo solo en el continuo dejaba fuera al protocolo autonomo, que
+        entra por el discreto: `ChemicalSpaceEnumerator` sobrescribe
+        `generation.fractions` con una rejilla de paso 0.0073, y 30 000 de esas
+        composiciones colapsaban en 1 998 estructuras — 15 candidatos por cada
+        estructura realmente nueva, y es el camino que gasta el DFT.
+        """
+        n = self._sitios[sitio]
         if self._fraction_mode == "continuous":
-            n = self._sitios[sitio]
-            # Ajustadas a la rejilla de la supercelda: sin esto se proponían
-            # composiciones que la estructura no puede contener. Se deduplica
-            # porque varias muestras continuas caen en el mismo múltiplo.
-            vistas = {
-                ajustar_fraccion(float(f), n)
-                for f in self._rng.uniform(0.05, 0.95, self._n_samples)
-            }
-            return sorted(vistas)
-        return [f for f in self._fractions
-                if abs(f) > 1e-9 and abs(f - 1.0) > 1e-9]
+            crudas: list[float] = [
+                float(f) for f in self._rng.uniform(0.05, 0.95, self._n_samples)
+            ]
+        else:
+            crudas = [f for f in self._fractions
+                      if abs(f) > 1e-9 and abs(f - 1.0) > 1e-9]
+        # Deduplicado: varias fracciones crudas caen en el mismo multiplo.
+        return sorted({ajustar_fraccion(f, n) for f in crudas})
 
     def _ternary_x_fracs(self) -> list[tuple[float, float, float]]:
-        """Fracciones (xI, xBr, xCl) para mezcla ternaria de haluros."""
+        """Fracciones (xI, xBr, xCl) para mezcla ternaria de haluros.
+
+        Como en las binarias, se ajusta en ambos modos: la tercera fracción se
+        deriva de las otras dos para que sumen exactamente 1, y se descartan las
+        combinaciones donde a esa tercera no le quedaría ni un átomo.
+        """
+        n = self._sitios["X"]
         if self._fraction_mode == "continuous":
-            pts = self._rng.dirichlet([1.0, 1.0, 1.0], self._n_samples)
-            n = self._sitios["X"]
-            # Ajustadas a los n sitios X y con la 3ª derivada de las otras dos,
-            # para que sumen exactamente 1 y sean representables a la vez.
-            out = []
-            for a, b, _ in pts:
-                a_aj = ajustar_fraccion(float(a), n)
-                b_aj = ajustar_fraccion(float(b), n)
-                c_aj = 1.0 - a_aj - b_aj
-                if c_aj < 1.0 / n - 1e-9:   # la tercera especie no cabría
-                    continue
-                out.append((a_aj, b_aj, c_aj))
-            return sorted(set(out))
-        out = []
-        for xI in self._fractions:
-            for xBr in self._fractions:
-                xCl = round(1.0 - xI - xBr, 3)
-                out.append((xI, xBr, xCl))
-        return out
+            crudas = [(float(a), float(b))
+                      for a, b, _ in self._rng.dirichlet([1.0, 1.0, 1.0], self._n_samples)]
+        else:
+            crudas = [(xI, xBr) for xI in self._fractions for xBr in self._fractions]
+
+        out = set()
+        for a, b in crudas:
+            a_aj = ajustar_fraccion(a, n)
+            b_aj = ajustar_fraccion(b, n)
+            c_aj = 1.0 - a_aj - b_aj
+            if c_aj < 1.0 / n - 1e-9:   # la tercera especie no cabría
+                continue
+            out.add((a_aj, b_aj, c_aj))
+        return sorted(out)
 
     def _multi_fracs(self) -> list[tuple[float, float]]:
         """Pares (fA, fX) para multi_mixed (A y X simultáneos)."""
         if self._fraction_mode == "continuous":
-            fa = self._rng.uniform(0.05, 0.95, self._n_samples)
-            fx = self._rng.uniform(0.05, 0.95, self._n_samples)
-            pares = {
-                (ajustar_fraccion(float(a), self._sitios["A"]),
-                 ajustar_fraccion(float(x), self._sitios["X"]))
-                for a, x in zip(fa, fx)
-            }
-            return sorted(pares)
-        base = [f for f in self._fractions
-                if abs(f) > 1e-9 and abs(f - 1.0) > 1e-9]
-        return list(itertools.product(base, base))
+            crudos = list(zip(self._rng.uniform(0.05, 0.95, self._n_samples),
+                              self._rng.uniform(0.05, 0.95, self._n_samples)))
+        else:
+            base = [f for f in self._fractions
+                    if abs(f) > 1e-9 and abs(f - 1.0) > 1e-9]
+            crudos = list(itertools.product(base, base))
+        return sorted({
+            (ajustar_fraccion(float(a), self._sitios["A"]),
+             ajustar_fraccion(float(x), self._sitios["X"]))
+            for a, x in crudos
+        })
 
     @staticmethod
     def save_jsonl(candidates: list[GeneratedCandidate], path: str | Path) -> None:

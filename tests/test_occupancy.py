@@ -295,3 +295,118 @@ def test_el_bandgap_de_dft_no_se_usa_como_feature_para_predecirse(tmp_path):
     assert "band_gap_gga_eV" not in list(columnas), (
         f"el target volvio a entrar como feature: {list(columnas)}"
     )
+
+
+# ── El protocolo autónomo entra por el modo discreto ─────────────────────────
+
+def test_el_modo_discreto_tambien_ajusta_a_la_rejilla():
+    """El ajuste solo en el modo continuo dejaba fuera al protocolo autónomo.
+
+    `ChemicalSpaceEnumerator` sobrescribe `generation.fractions` con una rejilla
+    de paso 0.0073 y el generador la consume por el camino discreto. Medido: de
+    30 000 composiciones salían 1 998 estructuras — 15 candidatos por cada
+    estructura nueva, en el camino que gasta el DFT.
+    """
+    from buho.discovery.space import fraction_grid
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    cfg["generation"]["fraction_mode"] = "discrete"
+    cfg["generation"]["fractions"] = fraction_grid(0.05, 0.95, 0.0073)
+    gen = HeuristicGenerator(cfg, random_seed=1)
+
+    for sitio in ("A", "B", "X"):
+        n = sitios_por_subred([2, 2, 2])[sitio]
+        for f in gen._binary_fracs(sitio):
+            realizadas = fracciones_realizadas(
+                ["S1", "S2"], {"S1": f, "S2": 1.0 - f}, n)
+            assert realizadas["S1"] == pytest.approx(f, abs=1e-6)
+            assert realizadas["S1"] > 0.0 and realizadas["S2"] > 0.0
+
+
+def test_una_rejilla_fina_no_multiplica_los_candidatos():
+    """Paso 0.0073 sobre 8 sitios no puede dar más de 7 fracciones distintas."""
+    from buho.discovery.space import fraction_grid
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    cfg["generation"]["fraction_mode"] = "discrete"
+    cfg["generation"]["fractions"] = fraction_grid(0.05, 0.95, 0.0073)
+    gen = HeuristicGenerator(cfg, random_seed=1)
+
+    propuestas = gen._binary_fracs("A")
+    assert len(propuestas) <= 7, f"{len(propuestas)} fracciones para 8 sitios"
+    assert propuestas == sorted(set(propuestas)), "sin repetidos"
+
+
+def test_el_espacio_del_protocolo_no_colapsa(tmp_path):
+    """1 candidato = 1 estructura, también por el camino del protocolo."""
+    from buho.discovery.space import fraction_grid
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    cfg["generation"]["fraction_mode"] = "discrete"
+    cfg["generation"]["fractions"] = fraction_grid(0.05, 0.95, 0.0073)
+    cfg["generation"]["modes"] = {"pure": True, "A_mixed": True, "B_mixed": True,
+                                  "X_mixed": False, "multi_mixed": False}
+    cands = HeuristicGenerator(cfg, random_seed=3).generate()
+    claves = {clave_estructura(c, [2, 2, 2]) for c in cands}
+
+    assert len(claves) == len(cands), (
+        f"{len(cands)} candidatos colapsan en {len(claves)} estructuras")
+
+
+# ── Geometría por pareja B–X ─────────────────────────────────────────────────
+
+#: Parámetros de red experimentales de la fase cúbica, en angstrom.
+A_EXPERIMENTAL = {
+    ("Pb", "I"): 6.18, ("Pb", "Br"): 5.87, ("Pb", "Cl"): 5.605,
+    ("Sn", "I"): 6.22, ("Sn", "Br"): 5.80,
+}
+
+
+@pytest.mark.parametrize("par", sorted(A_EXPERIMENTAL))
+def test_la_celda_reproduce_el_parametro_experimental(cfg, par):
+    """La contracción B–X estaba calibrada solo con yoduros.
+
+    Aplicar el factor del yoduro a un bromuro comprimía la celda un 2.1 % y a un
+    cloruro un 2.4 %. En estas perovskitas comprimir aumenta el solapamiento
+    B–X, sube el máximo de la banda de valencia y cierra el gap: bastaba para
+    poner los bromuros por debajo de los yoduros e invertir la tendencia
+    Cl > Br > I, que es de las más sólidas de esta familia.
+    """
+    from buho.generator.heuristic_generator import HeuristicGenerator
+    from buho.structure.build_abx3 import ABX3StructureBuilder
+
+    b_site, x_site = par
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+    cand = gen._make_candidate(
+        A_sp=["Cs"], B_sp=[b_site], X_sp=[x_site],
+        A_f={"Cs": 1.0}, B_f={b_site: 1.0}, X_f={x_site: 1.0}, mode="pure",
+    )
+    _, meta = ABX3StructureBuilder(cfg).build(cand)
+
+    esperado = A_EXPERIMENTAL[par]
+    error = abs(meta["lattice_constant_A"] - esperado) / esperado
+    assert error < 0.005, (
+        f"Cs{b_site}{x_site}3: a={meta['lattice_constant_A']:.3f} frente a "
+        f"{esperado} experimental ({100 * error:+.1f} %)"
+    )
+
+
+def test_una_config_con_el_formato_antiguo_sigue_funcionando(cfg):
+    """`{B: factor}` era el formato anterior; una config de usuario escrita
+    para esa versión no puede reventar al indexar."""
+    from buho.generator.heuristic_generator import HeuristicGenerator
+    from buho.structure.build_abx3 import ABX3StructureBuilder
+
+    viejo = dict(cfg)
+    viejo["structure"] = dict(cfg["structure"])
+    viejo["structure"]["bond_contraction"] = {"Pb": 0.912}
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+    cand = gen._make_candidate(
+        A_sp=["Cs"], B_sp=["Pb"], X_sp=["I"],
+        A_f={"Cs": 1.0}, B_f={"Pb": 1.0}, X_f={"I": 1.0}, mode="pure",
+    )
+    _, meta = ABX3StructureBuilder(viejo).build(cand)
+    assert meta["lattice_constant_A"] == pytest.approx(6.183, abs=0.01)

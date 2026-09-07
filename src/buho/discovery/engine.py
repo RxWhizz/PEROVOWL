@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from buho import bandgap_scissor
+from buho import bandgap_scissor, eg_scale
 from buho.discovery.pareto import pareto_front
 from buho.discovery.space import ChemicalSpaceEnumerator, fraction_grid
 from buho.generator.heuristic_generator import GeneratedCandidate, HeuristicGenerator
@@ -1657,6 +1657,11 @@ class DiscoveryLoop:
         X = build_X(df, feat_cols)
         y = df["Eg_target_eV"].values.astype(float)
         model = SurrogateEnsemble().fit(X, y, feat_cols)
+        # Se sella con la escala de las etiquetas. Sin el sello, la cascada no
+        # sabe si puede llevar la prediccion a escala experimental, y aplicar
+        # una correccion calibrada para otra escala da un numero sin sentido
+        # que no se nota mirando el resultado.
+        eg_scale.sellar_modelo(model)
 
         model_dir = self.models_root / "models" / "discovery"
         model_dir.mkdir(parents=True, exist_ok=True)
