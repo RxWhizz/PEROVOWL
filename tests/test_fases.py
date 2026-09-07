@@ -172,3 +172,148 @@ def test_la_tolerancia_se_reporta(padre_cubico):
     _spglib_o_skip()
     r = F.grupo_espacial(padre_cubico, tolerancia=0.01)
     assert r["tolerancia"] == 0.01
+
+
+# ── Elegir la fase: el potencial la forma, la semilla el tamaño ──────────────
+
+class _CalculadorFalso:
+    """Prefiere la fase que se le diga, sin depender del MLFF real.
+
+    Las pruebas con M3GNet costarían minutos y una descarga; lo que hay que
+    fijar aquí es la lógica de selección, no el potencial.
+    """
+
+    implemented_properties = ["energy", "free_energy", "forces", "stress"]
+
+    def __init__(self, favorita: str, energias: dict[str, float]):
+        self.favorita = favorita
+        self.energias = energias
+        self.atoms = None
+
+    def get_potential_energy(self, atoms=None, **_):
+        import numpy as np
+        a = atoms if atoms is not None else self.atoms
+        # La energía depende del número de átomos para que salga por fórmula.
+        n_fu = max(1, len(a) // 5)
+        # Se identifica la fase por cuánto se desvían los aniones de la posición
+        # ideal: la cúbica no tiene desviación, las inclinadas sí.
+        frac = a.get_scaled_positions()
+        desvio = float(np.abs(frac * 4 - np.round(frac * 4)).max())
+        clave = "cubica" if desvio < 1e-6 else "inclinada"
+        return self.energias[clave] * n_fu
+
+    def get_forces(self, atoms=None, **_):
+        import numpy as np
+        a = atoms if atoms is not None else self.atoms
+        return np.zeros((len(a), 3))
+
+    def get_stress(self, atoms=None, **_):
+        import numpy as np
+        return np.zeros(6)
+
+    def get_property(self, name, atoms=None, allow_calculation=True):
+        if name in ("energy", "free_energy"):
+            return self.get_potential_energy(atoms)
+        if name == "forces":
+            return self.get_forces(atoms)
+        if name == "stress":
+            return self.get_stress(atoms)
+        raise NotImplementedError(name)
+
+    def calculate(self, atoms=None, *a, **k):
+        self.atoms = atoms
+
+    def check_state(self, atoms, tol=1e-15):
+        return []
+
+
+def test_reescalar_conserva_el_grupo_espacial(candidatas):
+    """El escalado uniforme mueve todos los átomos igual en fraccionarias.
+
+    Es lo que permite quedarse con la forma que dio el potencial y el tamaño que
+    dice la semilla, sin cambiar la simetría por el camino.
+    """
+    _spglib_o_skip()
+    original = candidatas["ortorrombica"]["atoms"]
+    antes = F.grupo_espacial(original)
+
+    escalada = F.reescalar_a_volumen(original, original.get_volume() * 1.3)
+
+    assert F.grupo_espacial(escalada)["numero"] == antes["numero"]
+    assert escalada.get_volume() == pytest.approx(original.get_volume() * 1.3)
+
+
+def test_reescalar_no_revienta_con_volumen_absurdo(candidatas):
+    original = candidatas["cubica"]["atoms"]
+    assert len(F.reescalar_a_volumen(original, 0.0)) == len(original)
+    assert len(F.reescalar_a_volumen(original, -5.0)) == len(original)
+
+
+def test_la_fase_elegida_lleva_el_tamano_de_la_semilla(padre_cubico):
+    """El hallazgo de CsPbI₃: el potencial ordena bien pero infla la celda.
+
+    M3GNet dejaba la cúbica en 6.4619 Å frente a 6.18 experimental (+4.56 %),
+    cuando la semilla calibrada fallaba un +0.06 %. Como el gap es muy sensible
+    al volumen, quedarse con esa celda desharía lo que gana el funcional. El
+    potencial aporta la forma; la semilla, el tamaño.
+    """
+    _spglib_o_skip()
+    a_semilla = 6.1834
+    calc = _CalculadorFalso("inclinada", {"cubica": -10.0, "inclinada": -10.5})
+
+    r = F.seleccionar_fase(padre_cubico, calc, b_sites={"Pb"}, x_sites={"I"},
+                           a_semilla=a_semilla)
+
+    assert r["ok"] is True
+    n_fu = len(r["atoms"]) // 5
+    a_final = (r["atoms"].get_volume() / n_fu) ** (1 / 3)
+    assert a_final == pytest.approx(a_semilla, abs=1e-6), (
+        "el tamaño tiene que venir de la semilla, no del potencial")
+
+
+def test_gana_la_de_menor_energia(padre_cubico):
+    _spglib_o_skip()
+    calc = _CalculadorFalso("inclinada", {"cubica": -10.0, "inclinada": -10.5})
+    r = F.seleccionar_fase(padre_cubico, calc, b_sites={"Pb"}, x_sites={"I"},
+                           a_semilla=6.1834)
+    assert r["fase"] != "cubica"
+    assert r["ranking"][0]["dE_meV_por_formula"] == 0.0
+
+
+def test_si_gana_la_cubica_se_respeta(padre_cubico):
+    """No se fuerza una distorsión: si el potencial dice cúbica, cúbica."""
+    _spglib_o_skip()
+    calc = _CalculadorFalso("cubica", {"cubica": -11.0, "inclinada": -10.0})
+    r = F.seleccionar_fase(padre_cubico, calc, b_sites={"Pb"}, x_sites={"I"},
+                           a_semilla=6.1834)
+    assert r["fase"] == "cubica"
+
+
+def test_el_ranking_completo_queda_registrado(padre_cubico):
+    """Saber que la segunda estaba a 3 meV o a 300 cambia cuánto fiarse."""
+    _spglib_o_skip()
+    calc = _CalculadorFalso("inclinada", {"cubica": -10.0, "inclinada": -10.5})
+    r = F.seleccionar_fase(padre_cubico, calc, b_sites={"Pb"}, x_sites={"I"},
+                           a_semilla=6.1834)
+    assert len(r["ranking"]) == len(F.FASES_INCLINACION)
+    assert all("dE_meV_por_formula" in x for x in r["ranking"])
+    assert "atoms" not in r["ranking"][0], "el ranking es para registrar, no pesa estructuras"
+
+
+def test_una_fase_que_falla_no_tumba_la_seleccion(padre_cubico, caplog):
+    """Si una relajación revienta, las demás siguen compitiendo."""
+    _spglib_o_skip()
+
+    class _Rompe(_CalculadorFalso):
+        def get_potential_energy(self, atoms=None, **k):
+            a = atoms if atoms is not None else self.atoms
+            if len(a) > 5:
+                raise RuntimeError("boom")
+            return -10.0
+
+    with caplog.at_level("WARNING"):
+        r = F.seleccionar_fase(padre_cubico, _Rompe("cubica", {}),
+                               b_sites={"Pb"}, x_sites={"I"}, a_semilla=6.1834)
+    assert r["ok"] is True
+    assert r["fase"] == "cubica"
+    assert "se descarta" in caplog.text

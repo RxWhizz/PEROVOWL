@@ -282,3 +282,109 @@ def generar_candidatas(atoms, *, b_sites: set[str], x_sites: set[str],
             "atoms": sembrada,
         })
     return salida
+
+
+# ── Elegir la fase ───────────────────────────────────────────────────────────
+
+def reescalar_a_volumen(atoms, volumen_objetivo: float):
+    """Escala la celda uniformemente hasta un volumen dado.
+
+    El escalado uniforme conserva el grupo espacial exactamente: mueve todos los
+    atomos en coordenadas fraccionarias identicas. Sirve para quedarse con la
+    FORMA de la distorsion que dio la relajacion y el TAMANO que dice otra
+    fuente.
+    """
+    actual = float(atoms.get_volume())
+    if actual <= 0 or volumen_objetivo <= 0:
+        return atoms.copy()
+    factor = (volumen_objetivo / actual) ** (1.0 / 3.0)
+    salida = atoms.copy()
+    salida.set_cell(np.array(salida.cell) * factor, scale_atoms=True)
+    return salida
+
+
+def ordenar_por_energia(candidatas: list[dict[str, Any]], calculador, *,
+                        fmax: float = 0.05, pasos: int = 300,
+                        ) -> list[dict[str, Any]]:
+    """Relaja cada candidata y las ordena de menor a mayor energia por formula.
+
+    El potencial decide el ORDEN, que es para lo que sirve. El tamano de celda
+    que salga de aqui no se usa: ver `seleccionar_fase`.
+    """
+    from ase.filters import FrechetCellFilter
+    from ase.optimize import FIRE
+
+    salida = []
+    for cand in candidatas:
+        est = cand["atoms"].copy()
+        n_fu = max(1, len(est) // 5)
+        est.calc = calculador
+        try:
+            convergido = bool(
+                FIRE(FrechetCellFilter(est), logfile=None).run(fmax=fmax, steps=pasos))
+            energia = float(est.get_potential_energy()) / n_fu
+        except Exception as exc:  # noqa: BLE001 - una fase no puede tumbar la ronda
+            log.warning("fase %s: la relajacion fallo (%s: %s); se descarta",
+                        cand["fase"], type(exc).__name__, exc)
+            continue
+        finally:
+            est.calc = None
+        salida.append({**cand, "atoms": est, "n_formulas": n_fu,
+                       "convergido": convergido,
+                       "E_por_formula_eV": round(energia, 5)})
+
+    salida.sort(key=lambda r: r["E_por_formula_eV"])
+    if salida:
+        base = salida[0]["E_por_formula_eV"]
+        for r in salida:
+            r["dE_meV_por_formula"] = round(1000 * (r["E_por_formula_eV"] - base), 1)
+    return salida
+
+
+def seleccionar_fase(atoms, calculador, *, b_sites: set[str], x_sites: set[str],
+                     a_semilla: float, supercelda_base: tuple[int, int, int] = (2, 2, 2),
+                     ) -> dict[str, Any]:
+    """Elige la fase de menor energia y le devuelve el tamano de la semilla.
+
+    Por que se separan las dos cosas
+    --------------------------------
+    Medido sobre CsPbI3: el potencial ORDENA bien --- pone la cubica 124 meV/f.u.
+    por encima de la ortorrombica, que es lo que dice el experimento, porque la
+    alfa cubica solo existe por encima de 330 C--- pero el TAMANO de celda que
+    devuelve es peor que el de partida: 6.4619 A frente a 6.1834 de la semilla,
+    con 6.18 experimental. Un +4.56 % contra un +0.06 %.
+
+    No es que el potencial falle: esta entrenado sobre PBE y reproduce el
+    volumen de PBE, que sobreestima el de estos haluros blandos. Pero el gap es
+    muy sensible al volumen --- comprimir un 2.1 % costaba 0.35 eV en los
+    bromuros--- asi que quedarse con esa celda desharia lo que gana el funcional.
+
+    De ahi el reparto: el potencial aporta la FORMA de la distorsion, que es lo
+    que no sabiamos, y la semilla calibrada contra parametros de red
+    experimentales aporta el TAMANO, que ya sabiamos. El reescalado es uniforme,
+    asi que el grupo espacial no cambia.
+    """
+    candidatas = generar_candidatas(
+        atoms, b_sites=b_sites, x_sites=x_sites, supercelda_base=supercelda_base)
+    ordenadas = ordenar_por_energia(candidatas, calculador)
+    if not ordenadas:
+        return {"ok": False, "motivo": "ninguna fase relajo"}
+
+    ganadora = ordenadas[0]
+    n_fu = ganadora["n_formulas"]
+    escalada = reescalar_a_volumen(ganadora["atoms"], n_fu * a_semilla ** 3)
+
+    return {
+        "ok": True,
+        "fase": ganadora["fase"],
+        "glazer": ganadora["glazer"],
+        "grupo_espacial": grupo_espacial(escalada),
+        "convergido": ganadora["convergido"],
+        "a_semilla_A": round(a_semilla, 4),
+        "a_relajado_mlff_A": round(float(
+            (ganadora["atoms"].get_volume() / n_fu) ** (1 / 3)), 4),
+        "atoms": escalada,
+        "ranking": [
+            {k: v for k, v in r.items() if k != "atoms"} for r in ordenadas
+        ],
+    }
