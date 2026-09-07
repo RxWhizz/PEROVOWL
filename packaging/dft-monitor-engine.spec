@@ -143,7 +143,11 @@ excludes = [
     # POST /api/screening/runs/{id}/start-dft devolviera 500.
     "gpaw",
     "phonopy",
-    "spglib",
+    # `spglib` NO se excluye: `buho.structure.fases.grupo_espacial` lo usa para
+    # identificar en que fase quedo una estructura, que es lo unico que
+    # distingue "medimos la fase" de "suponemos que es cubica". Estaba excluido
+    # de cuando el binario no hacia cristalografia, y el exclude gana a
+    # `hiddenimports`: tres versiones salieron sin el por no mirar esta lista.
     "tkinter",
     "IPython",
     "jupyter",

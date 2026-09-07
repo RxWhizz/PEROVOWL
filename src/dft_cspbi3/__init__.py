@@ -1,6 +1,6 @@
 """Caracterización DFT profunda con GPAW: el workflow de 26 pasos."""
 
-__version__ = "0.7.2"
+__version__ = "0.7.3"
 __author__ = "Contribuidores DFT-CsPbI3"
 
 __all__ = [

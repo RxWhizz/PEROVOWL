@@ -1005,8 +1005,26 @@ def test_ci_instala_lo_que_el_spec_necesita():
 
     # Terceros que el binario necesita de verdad y que no arrastra otro paquete.
     imprescindibles = ("spglib",)
+    excluidos = _lista_del_spec(spec, "excludes")
+    ocultos = _lista_del_spec(spec, "hiddenimports")
+
     for modulo in imprescindibles:
-        assert f'"{modulo}"' in spec, f"{modulo} no está en el spec"
+        assert modulo in ocultos, f"{modulo} no está en hiddenimports"
         assert modulo in wf, (
             f"'{modulo}' está en el spec pero CI no lo instala: el binario "
             "saldría sin él y la funcionalidad fallaría en silencio")
+        # Lo que costó tres versiones: `excludes` gana a `hiddenimports`, así que
+        # declararlo en los dos sitios deja el módulo fuera igualmente.
+        assert modulo not in excluidos, (
+            f"'{modulo}' está en hiddenimports Y en excludes; PyInstaller "
+            "hace caso al segundo y el binario sale sin él")
+
+
+def _lista_del_spec(spec: str, nombre: str) -> set[str]:
+    """Los módulos de una lista del spec (`excludes`, `hiddenimports`)."""
+    import re
+
+    m = re.search(rf"^{nombre}\s*=\s*\[(.*?)^\]", spec, re.S | re.M)
+    if not m:
+        return set()
+    return set(re.findall(r'"([A-Za-z_][A-Za-z0-9_.]*)"', m.group(1)))
