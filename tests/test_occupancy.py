@@ -362,6 +362,8 @@ def test_el_espacio_del_protocolo_no_colapsa(tmp_path):
 A_EXPERIMENTAL = {
     ("Pb", "I"): 6.18, ("Pb", "Br"): 5.87, ("Pb", "Cl"): 5.605,
     ("Sn", "I"): 6.22, ("Sn", "Br"): 5.80,
+    # Ge: red pseudo-cubica de la fase romboedrica R3m de temperatura ambiente.
+    ("Ge", "I"): 5.98, ("Ge", "Br"): 5.63, ("Ge", "Cl"): 5.43,
 }
 
 
@@ -410,3 +412,22 @@ def test_una_config_con_el_formato_antiguo_sigue_funcionando(cfg):
     )
     _, meta = ABX3StructureBuilder(viejo).build(cand)
     assert meta["lattice_constant_A"] == pytest.approx(6.183, abs=0.01)
+
+
+def test_el_germanio_se_expande_en_vez_de_contraerse():
+    """El radio ionico de Ge2+ supone un cation esferico, pero su par solitario
+    4s es estereoquimicamente activo y empuja los haluros mas lejos.
+
+    Sin corregir, CsGeCl3 salia con la celda comprimida un 6.5 % y un gap de
+    0.204 eV frente a 3.20 experimental. Con la celda medida sube a 1.277 eV.
+    """
+    from buho.structure.build_abx3 import BOND_CONTRACTION
+
+    for x_site in ("I", "Br", "Cl"):
+        assert BOND_CONTRACTION["Ge"][x_site] > 1.0, (
+            f"Ge-{x_site} deberia expandirse, no contraerse")
+    # Y el efecto crece al bajar el radio del haluro: cuanto mas pequeno el
+    # anion, mas pesa el volumen del par solitario frente al del enlace.
+    assert (BOND_CONTRACTION["Ge"]["Cl"]
+            > BOND_CONTRACTION["Ge"]["Br"]
+            > BOND_CONTRACTION["Ge"]["I"])

@@ -99,6 +99,9 @@ RADII = {"Cs": 1.88, "Pb": 1.19, "Sn": 1.18, "Ge": 0.73, "I": 2.20,
 BOND_CONTRACTION = {
     "Pb": {"I": 0.912, "Br": 0.932, "Cl": 0.934},
     "Sn": {"I": 0.920, "Br": 0.924, "Cl": 0.931},
+    # Ge se EXPANDE: su par solitario 4s empuja los haluros mas lejos de lo que
+    # predice el radio ionico. Ver build_abx3.BOND_CONTRACTION.
+    "Ge": {"I": 1.020, "Br": 1.046, "Cl": 1.069},
 }
 
 #: Parametros del calculo. Por defecto los del cribado; se pueden subir desde
@@ -155,8 +158,14 @@ def _gap(eigenvalues, n_ocupados: int) -> float:
 
 
 def medir(formula: str, *, ecut: int = ECUT, kpts: list[int] | None = None,
-          verbose: bool = True) -> dict:
-    """Gap calculado (PBE y PBE+SOC) de una referencia pura."""
+          xc: str = "PBE", verbose: bool = True) -> dict:
+    """Gap calculado de una referencia pura.
+
+    Con `xc="GLLBSC"` el gap fundamental es el de Kohn-Sham MAS la
+    discontinuidad de la derivada, que el funcional calcula explicitamente. Ese
+    termino es justo el que a PBE le falta: no es un ajuste empirico, sale del
+    propio calculo.
+    """
     from gpaw import GPAW, PW, FermiDirac
     from gpaw.spinorbit import soc_eigenstates
 
@@ -164,11 +173,11 @@ def medir(formula: str, *, ecut: int = ECUT, kpts: list[int] | None = None,
     a_site, b_site, x_site = _partir(formula)
     atoms, a = _celda(a_site, b_site, x_site)
     if verbose:
-        print(f"  {formula}  a = {a:.4f} A  ecut={ecut} k={kpts[0]}", flush=True)
+        print(f"  {formula}  a = {a:.4f} A  ecut={ecut} k={kpts[0]} xc={xc}", flush=True)
 
     calc = GPAW(
         mode=PW(ecut),
-        xc="PBE",
+        xc=xc,
         kpts={"size": kpts, "gamma": True},
         occupations=FermiDirac(SMEARING),
         convergence={"density": 1e-3, "eigenstates": 1e-4, "energy": 1e-4},
@@ -180,9 +189,21 @@ def medir(formula: str, *, ecut: int = ECUT, kpts: list[int] | None = None,
 
     n_e = int(round(calc.get_number_of_electrons()))
     nk = len(calc.get_ibz_k_points())
-    eg_pbe = _gap([calc.get_eigenvalues(kpt=k) for k in range(nk)], n_e // 2)
+    eg_ks = _gap([calc.get_eigenvalues(kpt=k) for k in range(nk)], n_e // 2)
+
+    dxc = 0.0
+    if xc == "GLLBSC":
+        # El gap fundamental de GLLB-SC es el de Kohn-Sham mas la
+        # discontinuidad. Sin sumarla se esta leyendo un gap de KS, que
+        # subestima tanto como el de PBE.
+        homo, lumo = calc.get_homo_lumo()
+        resp = calc.hamiltonian.xc.response
+        pot = resp.calculate_discontinuity_potential(homo, lumo)
+        eg_ks, dxc = resp.calculate_discontinuity(pot)
+
+    eg_pbe = eg_ks + dxc
     soc = soc_eigenstates(calc)
-    eg_soc = _gap(soc.eigenvalues(), n_e)
+    eg_soc = _gap(soc.eigenvalues(), n_e) + dxc
 
     ref = EG_EXPERIMENTAL[formula]
     return {
@@ -192,6 +213,9 @@ def medir(formula: str, *, ecut: int = ECUT, kpts: list[int] | None = None,
         "a_lat_A": round(a, 4),
         "ecut": ecut,
         "kpts": list(kpts),
+        "xc": xc,
+        "Eg_ks_eV": round(eg_ks, 4),
+        "Eg_dxc_eV": round(dxc, 4),
         "Eg_pbe_eV": round(eg_pbe, 4),
         "Eg_pbe_soc_eV": round(eg_soc, 4),
         "Eg_exp_eV": ref["eg"],
@@ -275,6 +299,8 @@ def main() -> int:
     ap.add_argument("--ecut", type=int, default=ECUT)
     ap.add_argument("--kpts", type=int, default=KPTS[0],
                     help="Malla k n x n x n, gamma-centrada.")
+    ap.add_argument("--xc", default="PBE",
+                    help="Funcional. GLLBSC anade la discontinuidad de la derivada.")
     args = ap.parse_args()
 
     referencias = args.solo or list(EG_EXPERIMENTAL)
@@ -284,7 +310,7 @@ def main() -> int:
             print(f"Sin valor experimental para {formula}", file=sys.stderr)
             return 2
         detalle.append(medir(formula, ecut=args.ecut,
-                            kpts=[args.kpts] * 3))
+                            kpts=[args.kpts] * 3, xc=args.xc))
 
     ajuste = ajustar(detalle) if len(detalle) >= 4 else None
     errores = _errores(detalle, ajuste)

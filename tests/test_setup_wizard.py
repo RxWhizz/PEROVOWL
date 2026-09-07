@@ -1055,11 +1055,21 @@ def test_contraccion_reproduce_las_redes_experimentales():
             f"Cs{b_site}{x_site}3: a={a:.3f} vs exp {a_exp}")
 
 
-def test_ge_no_se_contrae():
-    """Con el factor de Pb/Sn, CsGeI3 sale metalico: peor que el error original."""
+def test_ge_no_usa_el_factor_de_pb_ni_sn():
+    """Con el factor de Pb/Sn, CsGeI3 sale metalico: peor que el error original.
+
+    Ge tiene su propio factor y va al reves --- expande, no contrae---: el radio
+    ionico de Ge2+ supone un cation esferico, pero su par solitario 4s empuja
+    los haluros mas lejos. Lo que no puede pasar es que herede la contraccion de
+    los otros dos.
+    """
     from buho.structure.build_abx3 import BOND_CONTRACTION
 
-    assert "Ge" not in BOND_CONTRACTION
+    ge = BOND_CONTRACTION["Ge"]
+    for x_site, factor in ge.items():
+        assert factor > 1.0, f"Ge-{x_site}: {factor} contraeria la celda"
+        assert factor != BOND_CONTRACTION["Pb"][x_site]
+        assert factor != BOND_CONTRACTION["Sn"][x_site]
 
 
 # ── Riesgo de politipo: el filtro geometrico no confirma la fase ──────────────

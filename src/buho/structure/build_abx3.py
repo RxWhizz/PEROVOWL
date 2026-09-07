@@ -66,10 +66,18 @@ _ORG_WARNING = (
 BOND_CONTRACTION: dict[str, dict[str, float]] = {
     "Pb": {"I": 0.912, "Br": 0.932, "Cl": 0.934},
     "Sn": {"I": 0.920, "Br": 0.924, "Cl": 0.931},
-    # Ge sin contraer: no hay referencia cubica fiable (a temperatura ambiente
-    # es romboedrico por el par solitario 4s) y con el radio de Ge la suma ya
-    # cae cerca de lo razonable. Aplicarle el factor de Pb/Sn lo sobrecorrige
-    # hasta dejar el calculo metalico.
+    # Ge va al reves: el factor es MAYOR que uno, es decir, hay que expandir.
+    # El radio ionico de Ge2+ (0.73 A) supone un cation esferico, pero su par
+    # solitario 4s es estereoquimicamente activo y empuja los haluros mas lejos.
+    # Sin corregir, la celda salia comprimida un 2 % (I), 4.4 % (Br) y 6.5 %
+    # (Cl) respecto al parametro pseudo-cubico medido, y comprimir cierra el
+    # gap: CsGeBr3 daba 0.111 eV frente a 2.32 experimental.
+    #
+    # Se calibra contra la red pseudo-cubica de la fase romboedrica R3m, que es
+    # la que existe a temperatura ambiente. Que el pipeline modele la cubica
+    # ideal sigue siendo una aproximacion: aqui solo se corrige el tamano, no
+    # la distorsion.
+    "Ge": {"I": 1.020, "Br": 1.046, "Cl": 1.069},
 }
 
 #: Cuando falta la pareja exacta no se inventa un factor: 1.0 deja la celda como
