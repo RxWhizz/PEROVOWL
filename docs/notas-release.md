@@ -1,8 +1,9 @@
-# Monitor DFT 0.5.1
+# Monitor DFT 0.6.0
 
-Release de correcciones sobre 0.4.0. Si instalaste 0.4.0, **actualiza**: esa
-versión no arrancaba bien en una Windows limpia y aplicaba mal varias
-correcciones físicas.
+**El binario ya puede lanzar cálculos DFT.** Hasta ahora no podía: el runner
+necesita el pipeline en fuente y este no viajaba dentro del paquete, así que una
+instalación empaquetada cribaba y monitorizaba pero no ejecutaba ni un cálculo.
+Además, GPAW se instala ahora desde la propia app.
 
 Interfaz gráfica del pipeline de cribado de perovskitas: genera candidatos, los
 criba con la cascada HTS, prepara y lanza los cálculos DFT, y sigue el progreso
@@ -12,16 +13,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.5.1>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.6.0>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.5.1-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.5.1-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.5.1-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.5.1-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.6.0-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.6.0-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.6.0-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.6.0-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -29,13 +30,13 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.5.1-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.6.0-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.5.1-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.5.1-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.6.0-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.6.0-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
@@ -54,10 +55,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.5.1-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.6.0-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.5.1-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.6.0-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -70,8 +71,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.5.1-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.5.1-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.6.0-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.6.0-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -79,7 +80,7 @@ tar xzf dft-monitor-desktop-0.5.1-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.5.1-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.6.0-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
@@ -91,8 +92,8 @@ exige un token en `monitor.auth.token`.
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.5.1-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.5.1-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.6.0-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.6.0-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -102,6 +103,27 @@ sha256sum -c SHA256SUMS
 ```
 
 ## Qué trae
+
+### Nuevo en 0.6.0
+
+- **El pipeline viaja dentro del binario.** El runner de DFT no es código de
+  este proceso: es un Python externo —en Windows, el de WSL con GPAW— que
+  importa `buho` desde ficheros. Nadie puede importar desde dentro del archivo
+  de PyInstaller, así que hasta ahora `runner_launch` era `false` en **toda**
+  instalación empaquetada y el DFT no se podía lanzar. Ahora los fuentes se
+  copian a la raíz de datos al arrancar, y de paso llega también el script de
+  calibración, que era inalcanzable desde un binario.
+- **GPAW se instala desde la pestaña Entorno.** Crea el entorno en WSL con
+  micromamba, fija numpy a 1.26 —GPAW 24.6 no compila contra la ABI de numpy 2,
+  que es justo por lo que el entorno MLFF vive aparte—, comprueba los datasets
+  PAW y verifica que todo importa.
+- **Instalar WSL no se intenta.** Requiere administrador y reiniciar, así que la
+  app lo detecta y da el comando exacto en vez de pedir elevación y fallar de
+  forma confusa. Si ya tienes una distribución, se reutiliza en lugar de
+  proponerte otra.
+- Al terminar se escribe **dónde quedó el entorno** en tu configuración, con la
+  raíz de datos traducida a la ruta que WSL ve (`/mnt/c/...`). Sin ese paso el
+  entorno se creaba y nadie sabía encontrarlo.
 
 ### Nuevo en 0.5.0
 
@@ -169,6 +191,17 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.6.0
+
+- **Los datasets PAW se descargaban por costumbre.** Vienen ya en el paquete
+  `gpaw-data` de conda-forge, en `site-packages`, no en `share/gpaw`. El
+  instalador apuntaba al segundo, que no existe: habría dejado la ruta de
+  setups señalando a un directorio vacío —y la app diciendo «no se encontraron
+  setups PAW» tras una instalación correcta— además de bajar ~500 MB de más.
+  Ahora comprueba y solo descarga si de verdad faltan.
+- La documentación en Markdown sale del repositorio salvo los README y estas
+  notas. No afecta al programa; reduce el ruido del árbol.
 
 ### Corregido en 0.5.1
 
