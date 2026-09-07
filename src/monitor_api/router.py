@@ -1192,6 +1192,62 @@ async def discovery_export(request: Request) -> dict:
     return result
 
 
+# ── Arranque de un clic ──────────────────────────────────────────────────────
+
+class QuickStartRequest(BaseModel):
+    """Todo opcional: el sentido del boton es no tener que decidir nada."""
+
+    max_rounds: int | None = None
+    use_mlff: bool | None = None
+    dry_run: bool = False
+    con_benchmark: bool = True
+
+
+@router.get("/api/quickstart/status")
+async def quickstart_status() -> dict:
+    """Lo que dejo el ultimo arranque y como va el protocolo ahora."""
+    from .services.quickstart import estado
+
+    return estado()
+
+
+@router.get("/api/quickstart/probe")
+async def quickstart_probe() -> dict:
+    """Sondeo de la maquina sin arrancar nada: para ver el reparto antes.
+
+    Separado de `POST /api/quickstart` a proposito: mirar cuantos trabajos
+    saldrian no deberia lanzar dias de calculo.
+    """
+    from .services.hwprobe import sondear
+
+    return sondear()
+
+
+@router.post("/api/quickstart")
+async def quickstart_run(request: Request, body: QuickStartRequest | None = None) -> dict:
+    """Mide la maquina, fija el reparto, comprueba requisitos y arranca."""
+    from .services.quickstart import arrancar
+
+    body = body or QuickStartRequest()
+    if body.max_rounds is not None and body.max_rounds < 1:
+        raise HTTPException(status_code=422, detail="max_rounds debe ser positivo")
+
+    resultado = arrancar(
+        max_rounds=body.max_rounds,
+        use_mlff=body.use_mlff,
+        dry_run=body.dry_run,
+        con_benchmark=body.con_benchmark,
+    )
+    _auditar(
+        request,
+        "quickstart",
+        arrancado=resultado.get("arrancado"),
+        motivo=resultado.get("motivo"),
+        reparto=resultado.get("reparto"),
+    )
+    return resultado
+
+
 class SetupInstallRequest(BaseModel):
     target: str
     cuda: bool = False

@@ -237,7 +237,11 @@ class BatchLoop:
 
         # Columnas de features presentes (intersección con BASE+opcionales)
         feat_cols = [c for c in BASE_FEATURES if c in df.columns]
-        for opt in ("a_lat_mp_A", "band_gap_gga_eV", "Eform_eV_atom"):
+        # `band_gap_gga_eV` se excluye por la misma razon que en
+        # `discovery.engine._retrain_bandgap`: aqui vale lo mismo que
+        # `Eg_target_eV`, asi que seria entrenar a copiar el target, y en
+        # inferencia no existe.
+        for opt in ("a_lat_mp_A", "Eform_eV_atom"):
             if opt in df.columns:
                 feat_cols.append(opt)
         df = df.dropna(subset=["Eg_target_eV"])

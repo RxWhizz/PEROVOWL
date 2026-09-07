@@ -1,4 +1,4 @@
-# Monitor DFT 0.4.1
+# Monitor DFT 0.5.0
 
 Release de correcciones sobre 0.4.0. Si instalaste 0.4.0, **actualiza**: esa
 versión no arrancaba bien en una Windows limpia y aplicaba mal varias
@@ -12,16 +12,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.4.1>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.5.0>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.4.1-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.4.1-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.4.1-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.4.1-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.5.0-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.5.0-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.5.0-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.5.0-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -29,13 +29,13 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.4.1-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.5.0-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.4.1-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.4.1-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.5.0-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.5.0-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
@@ -54,10 +54,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.4.1-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.5.0-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.4.1-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.5.0-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -70,8 +70,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.4.1-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.4.1-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.5.0-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.5.0-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -79,7 +79,7 @@ tar xzf dft-monitor-desktop-0.4.1-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.4.1-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.5.0-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
@@ -91,8 +91,8 @@ exige un token en `monitor.auth.token`.
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.4.1-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.4.1-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.5.0-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.5.0-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -103,7 +103,27 @@ sha256sum -c SHA256SUMS
 
 ## Qué trae
 
-### Nuevo en la serie 0.4
+### Nuevo en 0.5.0
+
+- **Arranque rápido.** Un botón en **Inicio** encadena lo que antes había que
+  hacer a mano y en orden: mide la máquina, fija el reparto de trabajos,
+  comprueba que estén las piezas, enumera el espacio químico y arranca el bucle.
+  Cada paso queda a la vista, y si falta algo se dice **antes** de empezar, con
+  qué instalar — no a mitad de la primera ronda con el estado ya a medias.
+- **Sondeo de la máquina en segundos.** Cuenta núcleos físicos (no hilos: GPAW
+  en estas celdas está limitado por ancho de banda de memoria, y el SMT reparte
+  el mismo ancho entre dos hilos), lee frecuencia y RAM disponible, y mide
+  GFLOP/s reales — el recuento de núcleos miente en máquinas virtuales y en
+  portátiles estrangulados por temperatura.
+- **El reparto explica qué lo limitó.** «20 cálculos × 2 núcleos, limitado por
+  la memoria» se puede discutir; «20 slots» a secas, no. La RAM manda: abrir más
+  trabajos de los que caben hace paginar, y paginar cuesta más que un slot de
+  menos.
+- Es una **estimación**, y la interfaz lo dice: dimensiona a partir de recursos
+  medidos. El óptimo real lo sigue dando el barrido de calibración, que mide
+  t/iteración lanzando GPAW de verdad.
+
+### De la serie 0.4
 
 - **Protocolo de descubrimiento autónomo**: un ciclo ML → DFT → reentrenar →
   repetir que encadena rondas solo, sin volver a invocarlo entre medias.
@@ -149,6 +169,38 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.5.0
+
+Todo esto salió de mirar por qué el reentrenamiento decía que el surrogate era
+veinte veces mejor que predecir la media.
+
+- **Los dopantes diluidos desaparecían de la estructura.** Una supercelda 2×2×2
+  tiene 8 sitios A, así que `round(0.051 × 8) = 0`: `Cs0.95Rb0.051SnI3` se
+  construía como CsSnI3 puro, y su DFT se archivaba bajo la fórmula del dopado.
+  Medido sobre el conjunto de entrenamiento: **56 de 111 filas compartían
+  Eg = 1.075 eV repartidas en 48 fórmulas distintas**.
+- **El generador proponía composiciones irrepresentables.** El muestreo continuo
+  sacaba fracciones como 0.051 que ninguna supercelda de 8 sitios puede alojar.
+  Ahora se ajustan a la rejilla de la celda, y la resolución sigue al tamaño de
+  la supercelda si se agranda. De 40 000 composiciones que colapsaban en 2 204
+  estructuras (**18×**) se pasa a **1 candidato = 1 estructura**.
+- **Se gastaba DFT en repetir material.** El bucle descarta ahora los candidatos
+  cuya estructura ya está calculada, y anota a cuál duplican.
+- **El bandgap de DFT se usaba como característica para predecirse a sí mismo.**
+  `Eg_target_eV` es `band_gap_gga_eV` más una constante por elemento B, y esa
+  columna entraba como feature. En producción no existe —es justo lo que hay que
+  predecir— y se rellenaba con 0.0 frente a un valor típico de 1.05.
+- **La validación cruzada repartía duplicados entre folds**, así que medía
+  reconocimiento de repetidos, no generalización. Con una fila por estructura el
+  `cv_mae` real pasa de 0.0036 a **0.0330 eV** contra un baseline de 0.0363: el
+  surrogate mejora un **9 %** sobre predecir la media, no un 92 %. Esa cifra
+  honesta se muestra en el botón de arranque, porque es la que decide si vale la
+  pena gastar días de DFT.
+- **La celda se dimensionaba con la composición pedida**, no con la que
+  realmente contenía: un dopante ausente seguía estirando la red.
+- **Una especie que se queda sin átomos ya no pasa en silencio**: se avisa, y la
+  metadata registra qué se perdió y qué composición se construyó de verdad.
 
 ### Corregido en 0.4.1
 

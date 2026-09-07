@@ -9,6 +9,7 @@ import '../repositories/repositories.dart';
 import '../utils/format.dart';
 import '../widgets/async_panel.dart';
 import '../widgets/status_chip.dart';
+import 'quick_start_card.dart';
 
 class DashboardView extends ConsumerWidget {
   const DashboardView({super.key});
@@ -34,6 +35,9 @@ class DashboardView extends ConsumerWidget {
       },
       child: ListView(
         children: [
+          // Arriba del todo: es la accion principal de la pantalla de inicio.
+          const QuickStartCard(),
+          const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
               final columns = constraints.maxWidth >= 1120

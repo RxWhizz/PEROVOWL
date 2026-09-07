@@ -30,6 +30,24 @@ final healthProvider = FutureProvider.autoDispose<Health>((ref) async {
   return Health.fromJson(await api.getMap('/api/health'));
 });
 
+/// Sondeo de la maquina para el arranque rapido.
+///
+/// No cuelga de ningun reloj: medir cuesta ~2 s de CPU y el hardware no cambia
+/// entre pestaneos. Se refresca a mano con `ref.invalidate`.
+final hardwareProbeProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  return api.getMap('/api/quickstart/probe');
+});
+
+/// Estado del ultimo arranque rapido y del protocolo.
+final quickStartStatusProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  ref.watch(slowRefreshTickProvider);
+  final api = ref.watch(apiClientProvider);
+  return api.getMap('/api/quickstart/status');
+});
+
 final authStateProvider = FutureProvider.autoDispose<AuthState>((ref) async {
   final api = ref.watch(apiClientProvider);
   return AuthState.fromJson(await api.getMap('/auth/me'));

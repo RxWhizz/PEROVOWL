@@ -29,6 +29,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
+from buho.structure.occupancy import ajustar_fraccion, sitios_por_subred
 from ml_surrogate.features import (
     CHARGES,
     ELECTRONEG,
@@ -179,6 +180,17 @@ class HeuristicGenerator:
         # Resolución de dedup: 0.001 (discreto exacto) / 0.02 (epsilon continuo)
         self._id_grid: float = 0.02 if self._fraction_mode == "continuous" else 0.001
 
+        # Cuántos sitios tiene cada subred en la supercelda que se construirá.
+        # El muestreo continuo proponía fracciones como 0.051 que 8 sitios no
+        # pueden representar: `round(0.051*8) = 0` átomos, así que se calculaba
+        # el endmember y se archivaba con la fórmula del dopado. Ajustando aquí,
+        # la fórmula del candidato describe la estructura que se construye.
+        # La lista discreta original ([0.125 … 0.875]) ya eran múltiplos de 1/8;
+        # esto extiende esa propiedad al modo continuo, y la sigue si se
+        # agranda la supercelda.
+        st = self._cfg.get("structure", {}) or {}
+        self._sitios = sitios_por_subred(st.get("supercell_mixed", [2, 2, 2]))
+
     # ── Public API ──────────────────────────────────────────────────────────────
 
     def generate(self) -> list[GeneratedCandidate]:
@@ -247,11 +259,18 @@ class HeuristicGenerator:
 
     # ── Sampling de fracciones (discreto vs continuo) ─────────────────────────────
 
-    def _binary_fracs(self) -> list[float]:
+    def _binary_fracs(self, sitio: str = "A") -> list[float]:
         """Fracciones para una mezcla binaria (la otra es 1-f)."""
         if self._fraction_mode == "continuous":
-            return [round(float(f), 4)
-                    for f in self._rng.uniform(0.05, 0.95, self._n_samples)]
+            n = self._sitios[sitio]
+            # Ajustadas a la rejilla de la supercelda: sin esto se proponían
+            # composiciones que la estructura no puede contener. Se deduplica
+            # porque varias muestras continuas caen en el mismo múltiplo.
+            vistas = {
+                ajustar_fraccion(float(f), n)
+                for f in self._rng.uniform(0.05, 0.95, self._n_samples)
+            }
+            return sorted(vistas)
         return [f for f in self._fractions
                 if abs(f) > 1e-9 and abs(f - 1.0) > 1e-9]
 
@@ -259,14 +278,18 @@ class HeuristicGenerator:
         """Fracciones (xI, xBr, xCl) para mezcla ternaria de haluros."""
         if self._fraction_mode == "continuous":
             pts = self._rng.dirichlet([1.0, 1.0, 1.0], self._n_samples)
-            # Derivar la 3ª fracción de las 2 primeras → suma exactamente 1.0
+            n = self._sitios["X"]
+            # Ajustadas a los n sitios X y con la 3ª derivada de las otras dos,
+            # para que sumen exactamente 1 y sean representables a la vez.
             out = []
             for a, b, _ in pts:
-                a4 = round(float(a), 4)
-                b4 = round(float(b), 4)
-                c4 = round(1.0 - a4 - b4, 4)
-                out.append((a4, b4, c4))
-            return out
+                a_aj = ajustar_fraccion(float(a), n)
+                b_aj = ajustar_fraccion(float(b), n)
+                c_aj = 1.0 - a_aj - b_aj
+                if c_aj < 1.0 / n - 1e-9:   # la tercera especie no cabría
+                    continue
+                out.append((a_aj, b_aj, c_aj))
+            return sorted(set(out))
         out = []
         for xI in self._fractions:
             for xBr in self._fractions:
@@ -279,7 +302,12 @@ class HeuristicGenerator:
         if self._fraction_mode == "continuous":
             fa = self._rng.uniform(0.05, 0.95, self._n_samples)
             fx = self._rng.uniform(0.05, 0.95, self._n_samples)
-            return [(round(float(a), 4), round(float(x), 4)) for a, x in zip(fa, fx)]
+            pares = {
+                (ajustar_fraccion(float(a), self._sitios["A"]),
+                 ajustar_fraccion(float(x), self._sitios["X"]))
+                for a, x in zip(fa, fx)
+            }
+            return sorted(pares)
         base = [f for f in self._fractions
                 if abs(f) > 1e-9 and abs(f - 1.0) > 1e-9]
         return list(itertools.product(base, base))
@@ -325,10 +353,10 @@ class HeuristicGenerator:
             self._B_sites,
             self._X_sites,
         ):
-            for f in self._binary_fracs():
+            for f in self._binary_fracs("A"):
                 c = self._make_candidate(
                     A_sp=[A1, A2], B_sp=[B], X_sp=[X],
-                    A_f={A1: f, A2: round(1.0 - f, 4)},
+                    A_f={A1: f, A2: 1.0 - f},
                     B_f={B: 1.0}, X_f={X: 1.0},
                     mode="A_mixed",
                 )
@@ -343,11 +371,11 @@ class HeuristicGenerator:
             itertools.combinations(self._B_sites, 2),
             self._X_sites,
         ):
-            for f in self._binary_fracs():
+            for f in self._binary_fracs("B"):
                 c = self._make_candidate(
                     A_sp=[A], B_sp=[B1, B2], X_sp=[X],
                     A_f={A: 1.0},
-                    B_f={B1: f, B2: round(1.0 - f, 4)},
+                    B_f={B1: f, B2: 1.0 - f},
                     X_f={X: 1.0},
                     mode="B_mixed",
                 )
@@ -363,11 +391,11 @@ class HeuristicGenerator:
             self._B_sites,
             itertools.combinations(self._X_sites, 2),
         ):
-            for f in self._binary_fracs():
+            for f in self._binary_fracs("X"):
                 c = self._make_candidate(
                     A_sp=[A], B_sp=[B], X_sp=[X1, X2],
                     A_f={A: 1.0}, B_f={B: 1.0},
-                    X_f={X1: f, X2: round(1.0 - f, 4)},
+                    X_f={X1: f, X2: 1.0 - f},
                     mode="X_mixed",
                 )
                 if c is not None:
@@ -380,7 +408,10 @@ class HeuristicGenerator:
                         continue
                     X_sp = [x for x, f in zip(
                         self._X_sites, [xI, xBr, xCl]) if f > 0.01]
-                    X_f = {x: round(f, 4) for x, f in zip(
+                    # Sin redondear: las fracciones ya vienen ajustadas a los
+                    # 24 sitios X, y round(17/24, 4) + round(2/24, 4) +
+                    # round(5/24, 4) = 0.9999, que rompe la suma a 1.
+                    X_f = {x: f for x, f in zip(
                         self._X_sites, [xI, xBr, xCl]) if f > 0.01}
                     if len(X_sp) < 3:
                         continue  # already covered by 2-component
@@ -404,9 +435,9 @@ class HeuristicGenerator:
             for fA, fX in self._multi_fracs():
                 c = self._make_candidate(
                     A_sp=[A1, A2], B_sp=[B], X_sp=[X1, X2],
-                    A_f={A1: fA, A2: round(1.0 - fA, 4)},
+                    A_f={A1: fA, A2: 1.0 - fA},
                     B_f={B: 1.0},
-                    X_f={X1: fX, X2: round(1.0 - fX, 4)},
+                    X_f={X1: fX, X2: 1.0 - fX},
                     mode="multi_mixed",
                 )
                 if c is not None:

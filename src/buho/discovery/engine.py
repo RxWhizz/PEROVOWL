@@ -27,6 +27,7 @@ from buho.discovery.space import ChemicalSpaceEnumerator, fraction_grid
 from buho.generator.heuristic_generator import GeneratedCandidate, HeuristicGenerator
 from buho.mlff_runtime import MLFFUnavailableError
 from buho.screening.cascade import ScreeningCascade
+from buho.structure.occupancy import clave_estructura
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -1137,6 +1138,63 @@ class DiscoveryLoop:
                     break
         return selected
 
+    def _dedup_estructural(
+        self,
+        candidate_ids: list[str],
+        candidates: dict[str, Any],
+    ) -> tuple[list[str], list[dict[str, str]]]:
+        """Quita los candidatos que construyen una estructura ya calculada.
+
+        La formula no sirve como identidad: `Cs0.95Rb0.051SnI3` y `CsSnI3` se
+        escriben distinto y producen los mismos atomos, porque 8 sitios A no
+        pueden alojar un 5 % de Rb. Mandar los dos a DFT cuesta el doble para
+        obtener el mismo numero, y ademas mete duplicados en el entrenamiento:
+        de 111 filas del CSV, 56 compartian Eg = 1.075 eV con 48 formulas
+        distintas, lo que hacia parecer que el surrogate generalizaba cuando
+        solo reconocia repetidos repartidos entre folds de la validacion.
+        """
+        supercell = (self.config.get("structure", {}) or {}).get(
+            "supercell_mixed", [2, 2, 2]
+        )
+
+        # Estructuras que ya tienen (o van a tener) su DFT.
+        vistas: dict[tuple, str] = {}
+        ledger = self._read_ledger()
+        if not ledger.empty and "status" in ledger.columns:
+            ya_corridos = ledger[ledger["status"].isin(DFT_LEDGER_STATUSES)]
+            for cid in ya_corridos["candidate_id"].astype(str):
+                cand = candidates.get(cid)
+                if cand is not None:
+                    vistas.setdefault(clave_estructura(cand, supercell), cid)
+
+        conservados: list[str] = []
+        descartados: list[dict[str, str]] = []
+        for cid in candidate_ids:
+            cand = candidates.get(cid)
+            if cand is None:
+                conservados.append(cid)
+                continue
+            clave = clave_estructura(cand, supercell)
+            duplicado_de = vistas.get(clave)
+            if duplicado_de is None:
+                vistas[clave] = cid
+                conservados.append(cid)
+            else:
+                descartados.append({
+                    "candidate_id": cid,
+                    "formula": getattr(cand, "formula", ""),
+                    "duplica_a": duplicado_de,
+                })
+
+        if descartados:
+            log.warning(
+                "ronda: %d de %d candidatos construyen una estructura ya "
+                "calculada y no se mandan a DFT (p.ej. %s duplica a %s)",
+                len(descartados), len(candidate_ids),
+                descartados[0]["formula"], descartados[0]["duplica_a"],
+            )
+        return conservados, descartados
+
     def prepare_round(
         self,
         round_id: int,
@@ -1146,6 +1204,7 @@ class DiscoveryLoop:
         dry_run: bool = False,
     ) -> dict[str, Any]:
         candidates = self._load_candidates()
+        candidate_ids, descartados = self._dedup_estructural(candidate_ids, candidates)
         selected = [candidates[cid] for cid in candidate_ids if cid in candidates]
         round_dir = self._round_dir(round_id)
         round_dir.mkdir(parents=True, exist_ok=True)
@@ -1164,6 +1223,10 @@ class DiscoveryLoop:
             "selected_at": _utc(),
             "n_selected": len(selected),
             "candidate_ids": candidate_ids,
+            # Los que iban a repetir una estructura ya calculada. Se registran
+            # en vez de desaparecer: si la ronda sale mas corta de lo pedido,
+            # aqui esta el porque.
+            "descartados_por_duplicado": descartados,
             "dry_run": dry_run,
             "status": status,
         }
@@ -1524,6 +1587,39 @@ class DiscoveryLoop:
         new.to_csv(self.training_path, index=False)
         return len(rows)
 
+    def _sin_estructuras_repetidas(self, df: "pd.DataFrame") -> tuple["pd.DataFrame", int]:
+        """Una fila por estructura antes de entrenar y validar.
+
+        La validacion cruzada reparte filas al azar entre folds. Si la misma
+        estructura aparece varias veces con formulas distintas —lo que pasaba
+        cuando el generador proponia dopajes que la supercelda no puede
+        representar— acaba a ambos lados del corte y el `cv_mae` mide
+        reconocimiento de repetidos, no generalizacion.
+
+        Medido sobre el CSV real: 111 filas eran 21 estructuras, y el `cv_mae`
+        pasaba de 0.0036 eV a 0.0330 eV al deduplicar, contra un baseline de
+        0.0363. Es la diferencia entre "veinte veces mejor que la media" y
+        "un 9 % mejor".
+        """
+        if "candidate_id" not in df.columns or df.empty:
+            return df, 0
+        supercell = (self.config.get("structure", {}) or {}).get("supercell_mixed", [2, 2, 2])
+        candidatos = self._load_candidates()
+
+        claves: list[str | None] = []
+        for cid in df["candidate_id"].astype(str):
+            cand = candidatos.get(cid)
+            claves.append(str(clave_estructura(cand, supercell)) if cand is not None else None)
+
+        trabajo = df.copy()
+        trabajo["_clave"] = claves
+        # Las filas cuyo candidato no se localiza se conservan: no se puede
+        # afirmar que dupliquen nada.
+        sin_clave = trabajo[trabajo["_clave"].isna()]
+        con_clave = trabajo[trabajo["_clave"].notna()].drop_duplicates(subset=["_clave"])
+        resultado = pd.concat([con_clave, sin_clave], ignore_index=True).drop(columns=["_clave"])
+        return resultado, int(len(df) - len(resultado))
+
     def _retrain_bandgap(self, round_id: int) -> dict[str, Any]:
         try:
             from ml_surrogate.features import BASE_FEATURES, build_X
@@ -1542,8 +1638,17 @@ class DiscoveryLoop:
 
         df = pd.concat(frames, ignore_index=True)
         df = df.dropna(subset=["Eg_target_eV"])
+        df, n_duplicadas = self._sin_estructuras_repetidas(df)
         feat_cols = [col for col in BASE_FEATURES if col in df.columns]
-        for col in ("a_lat_mp_A", "band_gap_gga_eV", "Eform_eV_atom"):
+        # `band_gap_gga_eV` NO entra: en este bucle el target es el bandgap del
+        # propio DFT, y esa columna guarda ese mismo número (Eg_target_eV es
+        # Eg_pbe + chi_SOC, y chi_SOC depende solo del sitio B). Usarla como
+        # feature es predecir el target desde el target: daba cv_mae 0.002 eV,
+        # veinte veces mejor que la media, mientras el modelo solo copiaba una
+        # columna. Y en produccion no existe —es justo lo que hay que predecir
+        # antes del DFT—, asi que `build_X` la rellenaba con 0.0 frente a un
+        # valor tipico de 1.05: cada prediccion real extrapolaba fuera de rango.
+        for col in ("a_lat_mp_A", "Eform_eV_atom"):
             if col in df.columns and col not in feat_cols:
                 feat_cols.append(col)
         if len(df) < 5 or len(feat_cols) < 4:
@@ -1581,6 +1686,9 @@ class DiscoveryLoop:
             "round_id": round_id,
             "status": "ok",
             "n_samples": int(len(df)),
+            # Filas descartadas por describir una estructura ya presente. Si es
+            # alto, el DFT se esta gastando en repetir material.
+            "n_duplicadas_descartadas": int(n_duplicadas),
             "n_features": int(len(feat_cols)),
             # Error de AJUSTE, no de generalización: se predice sobre las mismas
             # filas con las que se entrenó. Se conserva porque delata problemas

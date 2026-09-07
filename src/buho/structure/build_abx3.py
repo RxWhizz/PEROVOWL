@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -25,6 +26,13 @@ from typing import Optional
 import numpy as np
 
 from buho.generator.heuristic_generator import GeneratedCandidate
+from buho.structure.occupancy import (
+    cuantizar_ocupacion,
+    fracciones_realizadas,
+    sitios_por_subred,
+)
+
+log = logging.getLogger(__name__)
 
 ORGANIC_A = {"MA", "FA"}
 _ORG_WARNING = (
@@ -94,6 +102,23 @@ class ABX3StructureBuilder:
             or len(candidate.X_site_species) > 1
         )
         has_organic = candidate.is_organic_A
+        self._perdidas_ultima_build: list[str] = []
+
+        # Fracciones que la supercelda puede representar de verdad. La celda se
+        # dimensiona con estas y no con las pedidas: dimensionarla para una
+        # composición que no contiene deja el tamaño y el contenido en
+        # desacuerdo. Cuando el generador propone fracciones representables
+        # —que es lo que hace desde el arreglo de `ajustar_fraccion`— ambas
+        # coinciden y esto no cambia nada.
+        _sitios = sitios_por_subred(self._supercell_mixed if is_mixed else [1, 1, 1])
+        fracciones_reales = {
+            sitio: fracciones_realizadas(
+                list(getattr(candidate, f"{sitio}_site_species", []) or []),
+                candidate.fractions.get(sitio, {}) or {},
+                _sitios[sitio],
+            )
+            for sitio in ("A", "B", "X")
+        }
 
         # ── Determine structural A/B/X for crystal building ──────────────────
         # Para A: usar placeholder si hay catión orgánico
@@ -108,11 +133,11 @@ class ABX3StructureBuilder:
 
         # ── Lattice constant ─────────────────────────────────────────────────
         r_B_eff = sum(
-            candidate.fractions["B"][sp] * IONIC_RADII[sp]
+            fracciones_reales["B"].get(sp, 0.0) * IONIC_RADII[sp]
             for sp in candidate.B_site_species
         )
         r_X_eff = sum(
-            candidate.fractions["X"][sp] * IONIC_RADII[sp]
+            fracciones_reales["X"].get(sp, 0.0) * IONIC_RADII[sp]
             for sp in candidate.X_site_species
         )
         # `lattice_est` devuelve 2√2·(r_B+r_X), que es la relación A–X. La red
@@ -133,7 +158,7 @@ class ABX3StructureBuilder:
         # espín-órbita. Se pondera por fracción igual que los radios, para que
         # una composición con el sitio B mezclado interpole entre sus factores.
         factor = sum(
-            candidate.fractions["B"][sp] * self._bond_contraction.get(sp, 1.0)
+            fracciones_reales["B"].get(sp, 0.0) * self._bond_contraction.get(sp, 1.0)
             for sp in candidate.B_site_species
         )
         a0 = lattice_est(r_B_eff, r_X_eff) / math.sqrt(2.0) * factor
@@ -164,6 +189,18 @@ class ABX3StructureBuilder:
             "B_site_species": candidate.B_site_species,
             "X_site_species": candidate.X_site_species,
             "fractions": candidate.fractions,
+            # Lo que la supercelda contiene de verdad. Difiere de `fractions`
+            # cuando se piden fracciones que 8 (o 24) sitios no pueden
+            # representar; sin esto, un resultado de DFT no dice a qué
+            # composición corresponde realmente.
+            "fractions_realized": fracciones_reales,
+            "composition_exact": not self._perdidas_ultima_build
+            and all(
+                abs(fracciones_reales[s].get(sp, 0.0) - float(candidate.fractions.get(s, {}).get(sp, 0.0))) < 1e-9
+                for s in ("A", "B", "X")
+                for sp in (getattr(candidate, f"{s}_site_species", []) or [])
+            ),
+            "species_dropped": list(self._perdidas_ultima_build),
             "molecular_A_placeholder": has_organic,
             "organic_A_warning": _ORG_WARNING if has_organic else None,
             "lattice_constant_A": round(a0, 4),
@@ -226,18 +263,26 @@ class ABX3StructureBuilder:
             """Convierte especie a símbolo ASE válido (organics → placeholder)."""
             return self._organic_placeholder if sp in ORGANIC_A else sp
 
-        def _assign(idxs, species_list, fracs):
+        def _assign(idxs, species_list, fracs, sitio):
             if len(species_list) <= 1:
                 return
             total = len(idxs)
-            counts = []
-            remaining = total
-            for i, sp in enumerate(species_list[:-1]):
-                n = int(round(fracs[sp] * total))
-                n = min(n, remaining)
-                counts.append(n)
-                remaining -= n
-            counts.append(remaining)
+            pares = cuantizar_ocupacion(list(species_list), fracs, total)
+            counts = [n for _, n in pares]
+
+            # Una especie pedida que se queda sin un solo átomo convierte la
+            # mezcla en su endmember, pero la fórmula sigue anunciando el
+            # dopante. Callarlo hace que el DFT del endmember se archive como si
+            # fuera el del dopado.
+            perdidas = [sp for sp, n in pares if n == 0 and float(fracs.get(sp, 0.0)) > 0.0]
+            if perdidas:
+                log.warning(
+                    "%s: %s desaparece del sitio %s — %d sitios no pueden "
+                    "representar fracciones menores que %.4f; se construye %s",
+                    candidate.formula, ", ".join(perdidas), sitio, total,
+                    1.0 / (2 * total), "el endmember",
+                )
+                self._perdidas_ultima_build.extend(perdidas)
 
             shuffled = idxs.copy()
             rng.shuffle(shuffled)
@@ -249,13 +294,13 @@ class ABX3StructureBuilder:
                 offset += n
 
         if len(candidate.A_site_species) > 1:
-            _assign(A_idxs, candidate.A_site_species, candidate.fractions["A"])
+            _assign(A_idxs, candidate.A_site_species, candidate.fractions["A"], "A")
 
         if len(candidate.B_site_species) > 1:
-            _assign(B_idxs, candidate.B_site_species, candidate.fractions["B"])
+            _assign(B_idxs, candidate.B_site_species, candidate.fractions["B"], "B")
 
         if len(candidate.X_site_species) > 1:
-            _assign(X_idxs, candidate.X_site_species, candidate.fractions["X"])
+            _assign(X_idxs, candidate.X_site_species, candidate.fractions["X"], "X")
 
         new_atoms = Atoms(
             symbols=symbols,
