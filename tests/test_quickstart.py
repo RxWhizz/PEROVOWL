@@ -261,3 +261,113 @@ def test_max_rounds_invalido_se_rechaza(tmp_path, monkeypatch):
     r = TestClient(create_app(config={})).post(
         "/api/quickstart", json={"max_rounds": 0})
     assert r.status_code == 422
+
+
+# ── Pipeline en fuente ───────────────────────────────────────────────────────
+
+def _bundle_falso(tmp_path, monkeypatch, version="9.9.9"):
+    """Simula un binario congelado con el pipeline dentro."""
+    bundle = tmp_path / "bundle"
+    (bundle / "pipeline" / "scripts").mkdir(parents=True)
+    (bundle / "pipeline" / "src" / "buho").mkdir(parents=True)
+    (bundle / "pipeline" / "scripts" / "buho_relax_runner.py").write_text(
+        "# runner", encoding="utf-8")
+    (bundle / "pipeline" / "scripts" / "bench_machine.py").write_text(
+        "# bench", encoding="utf-8")
+    (bundle / "pipeline" / "src" / "buho" / "__init__.py").write_text(
+        "", encoding="utf-8")
+    monkeypatch.setattr(paths, "is_frozen", lambda: True)
+    monkeypatch.setattr(paths, "bundle_root", lambda: bundle)
+    return bundle
+
+
+def test_el_pipeline_llega_a_la_raiz_de_datos(tmp_path, monkeypatch):
+    """El runner de DFT es un Python externo que importa `buho` desde ficheros.
+
+    Nadie puede importar desde dentro del archivo de PyInstaller, así que sin
+    materializarlos `runner_launch_available` daba False en toda instalación
+    binaria: la app monitorizaba y cribaba, pero no lanzaba un solo cálculo.
+    """
+    destino = tmp_path / "datos"
+    destino.mkdir()
+    paths.set_data_root(destino)
+    _bundle_falso(tmp_path, monkeypatch)
+
+    r = paths.materializar_pipeline(version="9.9.9")
+
+    assert r["materializado"] is True
+    assert (destino / "scripts" / "buho_relax_runner.py").is_file()
+    assert (destino / "scripts" / "bench_machine.py").is_file()
+    assert (destino / "src" / "buho" / "__init__.py").is_file()
+
+
+def test_materializar_es_idempotente(tmp_path, monkeypatch):
+    """Arrancar la app cien veces no puede recopiar el pipeline cien veces."""
+    destino = tmp_path / "datos"
+    destino.mkdir()
+    paths.set_data_root(destino)
+    _bundle_falso(tmp_path, monkeypatch)
+
+    primera = paths.materializar_pipeline(version="9.9.9")
+    segunda = paths.materializar_pipeline(version="9.9.9")
+
+    assert primera["materializado"] is True
+    assert segunda["materializado"] is False
+    assert segunda["motivo"] == "ya al dia"
+
+
+def test_al_actualizar_la_app_se_refresca_el_pipeline(tmp_path, monkeypatch):
+    """Un binario nuevo no puede quedarse lanzando runners de la versión vieja."""
+    destino = tmp_path / "datos"
+    destino.mkdir()
+    paths.set_data_root(destino)
+    _bundle_falso(tmp_path, monkeypatch)
+    paths.materializar_pipeline(version="1.0.0")
+
+    r = paths.materializar_pipeline(version="1.1.0")
+
+    assert r["materializado"] is True
+    assert r["version"] == "1.1.0"
+
+
+def test_una_raiz_de_solo_lectura_no_impide_arrancar(tmp_path, monkeypatch):
+    """Sin pipeline se puede seguir cribando y observando; solo no hay DFT."""
+    destino = tmp_path / "datos"
+    destino.mkdir()
+    paths.set_data_root(destino)
+    _bundle_falso(tmp_path, monkeypatch)
+
+    def _falla(*a, **k):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr("monitor_api.paths.shutil.copyfile", _falla)
+
+    r = paths.materializar_pipeline(version="9.9.9")
+
+    assert r["materializado"] is False
+    assert "OSError" in r["motivo"]
+
+
+def test_desde_el_repositorio_no_toca_nada(tmp_path, monkeypatch):
+    """Los fuentes ya están donde toca; copiarlos encima sería destructivo."""
+    paths.set_data_root(tmp_path)
+    monkeypatch.setattr(paths, "is_frozen", lambda: False)
+
+    r = paths.materializar_pipeline(version="9.9.9")
+
+    assert r["materializado"] is False
+    assert not (tmp_path / "scripts").exists()
+
+
+def test_el_bench_encuentra_su_script_tras_materializar(tmp_path, monkeypatch):
+    """`can_run` era False en todo binario porque el script no viajaba."""
+    from monitor_api.services import bench
+
+    destino = tmp_path / "datos"
+    destino.mkdir()
+    paths.set_data_root(destino)
+    _bundle_falso(tmp_path, monkeypatch)
+
+    assert not bench._script().is_file()
+    paths.materializar_pipeline(version="9.9.9")
+    assert bench._script().is_file()

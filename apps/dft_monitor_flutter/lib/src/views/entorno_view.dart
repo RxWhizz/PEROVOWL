@@ -166,9 +166,16 @@ class _TarjetaCapacidad extends ConsumerWidget {
   final bool bloqueado;
   final VoidCallback onCambio;
 
-  /// Sólo el MLFF se instala desde la GUI: los demás grupos van al intérprete
-  /// del propio monitor, que no puede reinstalarse a sí mismo mientras sirve.
-  bool get _instalable => cap.id == 'mlff';
+  /// El runtime DFT y el MLFF se instalan desde la GUI; los demás grupos van
+  /// al intérprete del propio monitor, que no puede reinstalarse a sí mismo
+  /// mientras sirve.
+  ///
+  /// El de DFT no instala WSL: eso exige administrador y reiniciar. Si falta,
+  /// el plan que devuelve el servidor trae el comando exacto y ningún paso, y
+  /// el diálogo lo enseña tal cual.
+  bool get _instalable => cap.id == 'mlff' || cap.id == 'dft';
+
+  String get _nombreEntorno => cap.id == 'dft' ? 'DFT (GPAW en WSL)' : 'MLFF';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -265,14 +272,16 @@ class _TarjetaCapacidad extends ConsumerWidget {
 
     final ok = await confirmAction(
       context,
-      title: recrear ? 'Reinstalar el entorno MLFF' : 'Instalar el entorno MLFF',
+      title: recrear
+          ? 'Reinstalar el entorno $_nombreEntorno'
+          : 'Instalar el entorno $_nombreEntorno',
       message: plan,
       confirmLabel: 'Instalar',
     );
     if (!ok || !context.mounted) return;
 
     try {
-      await ref.read(setupActionsProvider).install('mlff', recreate: recrear);
+      await ref.read(setupActionsProvider).install(cap.id, recreate: recrear);
       onCambio();
     } catch (error) {
       if (context.mounted) {
@@ -284,15 +293,23 @@ class _TarjetaCapacidad extends ConsumerWidget {
 
   Future<String?> _pedirPlan(BuildContext context, WidgetRef ref) async {
     try {
-      final plan = await ref.read(setupActionsProvider).plan('mlff');
+      final plan = await ref.read(setupActionsProvider).plan(cap.id);
       final pasos = (plan['steps'] as List? ?? const [])
           .map((s) => '· ${(s as Map)['descripcion']}')
           .join('\n');
       final notas = (plan['notas'] as List? ?? const [])
           .map((n) => '· $n')
           .join('\n');
+      // Un plan sin pasos no es un error: es «esto no se puede hacer desde
+      // aquí», con el comando que sí lo hace. Instalar WSL es ese caso — pide
+      // administrador y reiniciar, así que la app guía en vez de fingir.
+      if (pasos.isEmpty) {
+        return notas.isEmpty
+            ? 'No hay nada que instalar.'
+            : 'Esto no se puede instalar desde la app:\n\n$notas';
+      }
       return [
-        if (pasos.isNotEmpty) 'Se van a ejecutar:\n$pasos',
+        'Se van a ejecutar:\n$pasos',
         if (notas.isNotEmpty) '\n$notas',
       ].join('\n');
     } catch (error) {

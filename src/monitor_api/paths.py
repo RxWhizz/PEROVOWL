@@ -23,9 +23,13 @@ reaparezca en ningún otro sitio.
 """
 from __future__ import annotations
 
+import logging
 import os
+import shutil
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 APP_NAME = "dft-monitor"
 
@@ -205,3 +209,77 @@ def describe() -> dict[str, str | bool]:
         "data_root": str(data_root()),
         "config_dir": str(config_dir()),
     }
+
+
+# ── Pipeline en fuente ───────────────────────────────────────────────────────
+
+#: Sello con la version que materializo el pipeline. Al actualizar la app hay
+#: que refrescar los fuentes: si no, un binario nuevo lanzaria runners viejos.
+_SELLO_PIPELINE = ".pipeline-version"
+
+
+def _pipeline_bundle() -> Path | None:
+    """Los fuentes del pipeline dentro del binario, si viajan ahi."""
+    if not is_frozen():
+        return None
+    candidato = bundle_root() / "pipeline"
+    return candidato if candidato.is_dir() else None
+
+
+def materializar_pipeline(*, version: str, forzar: bool = False) -> dict[str, object]:
+    """Copia `scripts/` y `src/` del bundle a la raiz de datos.
+
+    El runner de DFT no corre dentro de este proceso: es un Python externo —en
+    Windows, el de WSL con GPAW— que hace `sys.path.insert(ROOT/"src")` y
+    `from buho import ...`. Nadie puede importar desde dentro del archivo de
+    PyInstaller, asi que los fuentes tienen que existir como ficheros. Sin esto
+    `runner_launch_available` daba False en toda instalacion binaria: la app
+    monitorizaba y cribaba, pero no podia lanzar un solo calculo.
+
+    `version` se recibe en vez de importarse: este modulo tiene que poder
+    importarse antes que cualquier otro del paquete, sin ciclos.
+
+    Desde el repositorio no hace nada: los fuentes ya estan donde toca.
+    """
+    origen = _pipeline_bundle()
+    if origen is None:
+        return {"materializado": False, "motivo": "no congelado o sin pipeline en el bundle"}
+
+    destino = data_root()
+    sello = destino / _SELLO_PIPELINE
+    actual = None
+    if sello.is_file():
+        try:
+            actual = sello.read_text(encoding="utf-8").strip()
+        except OSError:
+            actual = None
+    if actual == version and not forzar:
+        return {"materializado": False, "motivo": "ya al dia", "version": actual}
+
+    copiados = 0
+    try:
+        for sub in ("scripts", "src"):
+            raiz_origen = origen / sub
+            if not raiz_origen.is_dir():
+                continue
+            for fichero in raiz_origen.rglob("*"):
+                if not fichero.is_file():
+                    continue
+                rel = fichero.relative_to(origen)
+                final = destino / rel
+                final.parent.mkdir(parents=True, exist_ok=True)
+                # `copyfile` y no `copy2`: preservar la mtime del bundle haria
+                # que un fichero recien escrito pareciera viejo.
+                shutil.copyfile(fichero, final)
+                copiados += 1
+        sello.write_text(version, encoding="utf-8")
+    except OSError as exc:
+        # Que no se pueda escribir no debe impedir arrancar el monitor: sin
+        # pipeline se puede seguir cribando y observando, y `runner_launch`
+        # lo reportara como no disponible.
+        log.warning("no se pudo materializar el pipeline en %s: %s", destino, exc)
+        return {"materializado": False, "motivo": f"{type(exc).__name__}: {exc}"}
+
+    log.info("pipeline materializado en %s (%d ficheros, v%s)", destino, copiados, version)
+    return {"materializado": True, "ficheros": copiados, "destino": str(destino),
+            "version": version}

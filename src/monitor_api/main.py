@@ -164,6 +164,11 @@ def create_app(config: dict | None = None) -> FastAPI:
     if declarada:
         paths.set_data_root(declarada, override=False)
 
+    # Con la raiz de datos ya resuelta: deja el pipeline en fuente donde el
+    # runner externo (y WSL) puedan leerlo. Es idempotente y solo copia cuando
+    # cambia la version, asi que no cuesta nada en arranques normales.
+    paths.materializar_pipeline(version=__version__)
+
     app = FastAPI(
         title="DFT Simulation Monitor",
         description="Monitor en tiempo real de simulaciones GPAW/BUHO con push via Telegram",

@@ -41,6 +41,37 @@ else:
         "  python scripts/calibrate_soc_scissor.py --out config/soc_scissor.json"
     )
 
+# El pipeline en fuente. El runner de DFT no es codigo del binario: es un
+# proceso aparte que lanza un Python externo (en Windows, el de WSL con GPAW), y
+# ese interprete hace `sys.path.insert(ROOT/"src")` + `from buho import ...`.
+# Nadie puede importar desde dentro del archivo de PyInstaller, asi que los
+# fuentes tienen que existir como ficheros de verdad. Sin esto,
+# `runner_launch_available` daba False en toda instalacion binaria y el DFT no
+# se podia lanzar: la app quedaba en monitor + cribado.
+#
+# `_materializar_pipeline` en monitor_api.paths los copia a la raiz de datos al
+# arrancar, que es donde el runner y WSL pueden leerlos.
+_SCRIPTS_RUNTIME = [
+    "buho_relax_runner.py",     # el runner de DFT
+    "bench_machine.py",         # calibracion de slots/nucleos
+    "buho_mlff_worker.py",      # worker del Tier 2
+    "active_learning_orchestrator.py",
+    "preconv_pbe_u.py",
+]
+for _nombre in _SCRIPTS_RUNTIME:
+    _s = ROOT / "scripts" / _nombre
+    if not _s.is_file():
+        raise SystemExit(f"Falta el script de runtime {_s}")
+    datas.append((str(_s), "pipeline/scripts"))
+
+for _paquete in ("buho", "dft_cspbi3", "ml_surrogate"):
+    _dir = ROOT / "src" / _paquete
+    if not _dir.is_dir():
+        raise SystemExit(f"Falta el paquete fuente {_dir}")
+    for _py in _dir.rglob("*.py"):
+        _rel = _py.relative_to(ROOT / "src").parent
+        datas.append((str(_py), str(Path("pipeline/src") / _rel)))
+
 estructuras = ROOT / "build" / "structures"
 if estructuras.is_dir():
     datas.append((str(estructuras), "structures"))

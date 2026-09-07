@@ -54,6 +54,22 @@ MLFF_PYTHON = "3.12"
 MLFF_PACKAGES = ("matgl>=4.0", "pymatgen>=2024.1", "ase>=3.23", "pandas>=2.0",
                  "scikit-learn>=1.8", "pyyaml>=6.0")
 
+#: Version de GPAW del entorno DFT. Fijada a la que se ha validado contra este
+#: pipeline; "la ultima" ha roto el runner mas de una vez.
+GPAW_VERSION = "24.6"
+
+#: Python y numpy del entorno GPAW. numpy queda en 1.26 a proposito: GPAW 24.6
+#: no compila contra la ABI de numpy 2, y es el motivo de que el entorno MLFF
+#: viva aparte en vez de compartir este.
+GPAW_PYTHON = "3.12"
+GPAW_NUMPY = "1.26"
+
+#: Nombre por defecto del entorno DFT en WSL.
+GPAW_ENV = "gpaw246"
+
+#: Distro que se propone cuando no hay ninguna instalada.
+DISTRO_SUGERIDA = "Ubuntu"
+
 GRUPOS_PIP = {
     "web": ("fastapi>=0.110", "uvicorn[standard]>=0.27", "httpx>=0.27",
             "psutil>=5.9", "itsdangerous>=2.1"),
@@ -517,6 +533,165 @@ def plan_mlff(config: dict[str, Any] | None = None, *,
     return plan
 
 
+def distros_wsl() -> list[str]:
+    """Distros instaladas. Lista vacia si WSL no esta o no hay ninguna."""
+    if not _wsl_disponible():
+        return []
+    try:
+        proc = subprocess.run(["wsl.exe", "-l", "-q"], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if proc.returncode != 0:
+        return []
+    # wsl.exe -l escribe UTF-16LE con NULs intercalados.
+    # wsl.exe -l escribe UTF-16LE; si no lo es, viene en UTF-8.
+    try:
+        salida = proc.stdout.decode("utf-16-le")
+    except UnicodeDecodeError:
+        salida = proc.stdout.decode("utf-8", errors="replace")
+    salida = salida.replace(chr(0), "")
+    return [linea.strip() for linea in salida.splitlines() if linea.strip()]
+
+
+def _rutas_gpaw(config: dict[str, Any] | None, env_name: str) -> dict[str, str]:
+    """Rutas del entorno GPAW en WSL, reutilizando micromamba si ya existe."""
+    discovery = (config or {}).get("discovery", {}) or {}
+    wsl_cfg = discovery.get("wsl", {}) or {}
+
+    micromamba = wsl_cfg.get("micromamba")
+    if not micromamba:
+        actual = str(wsl_cfg.get("python", ""))
+        if "/envs/" in actual:
+            micromamba = f"{actual.split('/envs/')[0]}/bin/micromamba"
+        else:
+            micromamba = "$HOME/perovowl-micromamba/bin/micromamba"
+    raiz = micromamba.rsplit("/bin/", 1)[0] if "/bin/" in micromamba else "$HOME/perovowl-micromamba"
+    prefijo = f"{raiz}/envs/{env_name}"
+    return {
+        "micromamba": micromamba,
+        "root_prefix": raiz,
+        "prefix": prefijo,
+        "python": f"{prefijo}/bin/python",
+        "mpirun": f"{prefijo}/bin/mpiexec",
+        "setups": f"{prefijo}/share/gpaw/setups",
+    }
+
+
+def plan_dft(config: dict[str, Any] | None = None, *,
+             distro: str | None = None,
+             env_name: str | None = None,
+             recrear: bool = False) -> Plan:
+    """Crea el entorno GPAW en WSL y descarga los datasets PAW.
+
+    Instalar WSL en si NO se intenta: `wsl --install` exige privilegios de
+    administrador y un reinicio. Una app cientifica que pide elevacion es
+    intrusiva, y el fallo sin ella seria confuso. Se detecta y se da el comando
+    exacto; a partir de que exista una distro, el resto si es automatico.
+    """
+    discovery = (config or {}).get("discovery", {}) or {}
+    wsl_cfg = discovery.get("wsl", {}) or {}
+    env = env_name or wsl_cfg.get("env_name") or GPAW_ENV
+
+    plan = Plan(target="dft")
+
+    if sys.platform != "win32":
+        plan.notas.append(
+            "Fuera de Windows, GPAW se instala en el sistema o en un entorno "
+            "conda propio; este plan solo cubre el camino por WSL."
+        )
+        return plan
+
+    if not _wsl_disponible():
+        plan.notas.append(
+            "No se encontro wsl.exe. Instalar WSL necesita permisos de "
+            "administrador y reiniciar, asi que no se puede hacer desde aqui."
+        )
+        plan.notas.append(
+            "Abre PowerShell como administrador y ejecuta:  wsl --install"
+        )
+        plan.notas.append("Reinicia y vuelve a esta pantalla.")
+        return plan
+
+    instaladas = distros_wsl()
+    if not instaladas:
+        plan.notas.append(
+            "WSL esta pero no hay ninguna distribucion instalada."
+        )
+        plan.notas.append(
+            f"En PowerShell:  wsl --install -d {DISTRO_SUGERIDA}"
+        )
+        plan.notas.append(
+            "La primera vez pide crear usuario y contrasena de forma "
+            "interactiva, por eso no se lanza desde la app."
+        )
+        return plan
+
+    # Se reutiliza la distro que el usuario ya tenga antes de proponer otra.
+    distro = distro or wsl_cfg.get("distro") or instaladas[0]
+    rutas = _rutas_gpaw(config, env)
+    mm, root_prefix = rutas["micromamba"], rutas["root_prefix"]
+
+    def wsl_step(name: str, script: str, *, descripcion: str = "",
+                 opcional: bool = False, timeout: int = 3600) -> Step:
+        cmd = ["wsl.exe", "-d", str(distro), "--", "bash", "-lc", script]
+        return Step(name=name, argv=cmd, descripcion=descripcion,
+                    opcional=opcional, timeout=timeout)
+
+    steps: list[Step] = []
+    steps.append(wsl_step(
+        "asegurar-micromamba",
+        f"test -x {_sh(mm)} || {{ "
+        f"mkdir -p {_sh(os.path.dirname(mm))} && "
+        f"curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest "
+        f"| tar -xvj -C /tmp bin/micromamba && "
+        f"mv /tmp/bin/micromamba {_sh(mm)} && chmod +x {_sh(mm)}; }}",
+        descripcion="Comprueba micromamba y lo descarga solo si falta.",
+        timeout=900,
+    ))
+    if recrear:
+        steps.append(wsl_step(
+            "limpiar",
+            f"{_sh(mm)} env remove -y -r {_sh(root_prefix)} -n {shlex.quote(env)} || true",
+            descripcion=f"Elimina el entorno {env} si existia.",
+            opcional=True, timeout=900,
+        ))
+    steps.append(wsl_step(
+        "crear-entorno",
+        f"{_sh(mm)} create -y -r {_sh(root_prefix)} -n {shlex.quote(env)} "
+        f"-c conda-forge python={GPAW_PYTHON} numpy={GPAW_NUMPY} "
+        f"gpaw={GPAW_VERSION} ase openmpi",
+        descripcion=(f"Crea {env} con GPAW {GPAW_VERSION}, numpy {GPAW_NUMPY} "
+                     "y OpenMPI (~2 GB)."),
+        timeout=5400,
+    ))
+    steps.append(wsl_step(
+        "datasets-paw",
+        f"{_sh(rutas['python'])} -c 'import sys' && "
+        f"{_sh(root_prefix + '/envs/' + env + '/bin/gpaw')} install-data "
+        f"--register {_sh(rutas['setups'])}",
+        descripcion="Descarga y registra los datasets PAW (~500 MB).",
+        timeout=3600,
+    ))
+    steps.append(wsl_step(
+        "verificar",
+        f"{_sh(rutas['python'])} -c "
+        + shlex.quote("import gpaw, ase; print('gpaw', gpaw.__version__, 'ase', ase.__version__)"),
+        descripcion="Comprueba que GPAW y ASE importan en el entorno nuevo.",
+        timeout=600,
+    ))
+
+    plan.steps = steps
+    plan.notas.append(f"Distro: {distro}. Entorno: {env}.")
+    plan.notas.append(
+        "Descarga unos 2.5 GB entre el entorno y los datasets PAW."
+    )
+    plan.notas.append(
+        "Al terminar se escribe discovery.wsl en la configuracion del usuario, "
+        "con project_root apuntando a la raiz de datos vista desde WSL."
+    )
+    return plan
+
+
 def plan_pip(target: str) -> Plan:
     """Instala un grupo de extras en el intérprete actual."""
     paquetes = GRUPOS_PIP.get(target)
@@ -539,7 +714,9 @@ def plan_pip(target: str) -> Plan:
 def plan(target: str, *, config: dict[str, Any] | None = None, **opciones: Any) -> Plan:
     if target == "mlff":
         return plan_mlff(config, **opciones)
+    if target == "dft":
+        return plan_dft(config, **opciones)
     if target in GRUPOS_PIP:
         return plan_pip(target)
-    raise ValueError(f"Objetivo desconocido: {target}. Válidos: mlff, "
+    raise ValueError(f"Objetivo desconocido: {target}. Válidos: dft, mlff, "
                      + ", ".join(sorted(GRUPOS_PIP)))

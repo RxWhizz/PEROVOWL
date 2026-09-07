@@ -26,6 +26,13 @@ def _progress_file() -> Path:
 
 
 def _script() -> Path:
+    """El barrido, en la raiz de datos.
+
+    En una instalacion binaria llega ahi porque `paths.materializar_pipeline`
+    lo copia del bundle al arrancar; desde el repositorio ya esta. Antes solo
+    existia en el repositorio, asi que `can_run` era False en todo binario y la
+    calibracion no se podia lanzar.
+    """
     return paths.data_root() / "scripts" / "bench_machine.py"
 
 

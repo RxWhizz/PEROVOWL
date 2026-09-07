@@ -352,6 +352,17 @@ class _Pasos extends StatelessWidget {
                   ?.copyWith(color: theme.colorScheme.error),
             ),
           ),
+        // El arranque rápido no instala nada por su cuenta: el entorno DFT son
+        // ~2.5 GB de descarga, y encadenarlo a un clic sería descargarlos sin
+        // avisar. Se manda a Entorno, que sí pide confirmación con el plan.
+        Padding(
+          padding: const EdgeInsets.only(left: 15, top: 6),
+          child: Text(
+            'Instálalo desde la pestaña Entorno.',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(fontStyle: FontStyle.italic),
+          ),
+        ),
       ];
     }
     return const [];

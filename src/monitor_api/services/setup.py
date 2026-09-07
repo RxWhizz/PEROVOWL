@@ -121,10 +121,25 @@ def start_install(target: str, **opciones: Any) -> dict[str, Any]:
             except Exception as exc:  # noqa: BLE001 - un hilo no puede morir mudo
                 log.exception("Instalación '%s' falló", target)
                 resultado = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+            # El entorno recien creado no sirve de nada si nadie sabe donde
+            # esta: sin escribir discovery.wsl, `setup_wizard` seguiria pidiendo
+            # que se defina a mano y el arranque rapido seguiria negandose.
+            if target == "dft" and resultado.get("status") == "ok":
+                try:
+                    resultado["configuracion"] = configurar_wsl_dft(
+                        distro=opciones.get("distro"),
+                        env_name=opciones.get("env_name"),
+                    )
+                except Exception as exc:  # noqa: BLE001 - no puede tumbar el hilo
+                    log.exception("no se pudo escribir discovery.wsl")
+                    resultado["configuracion"] = {
+                        "escrito": False, "motivo": f"{type(exc).__name__}: {exc}"}
+
             with _lock:
                 _job["status"] = resultado.get("status", "error")
                 _job["error"] = resultado.get("error")
                 _job["steps"] = resultado.get("steps", [])
+                _job["configuracion"] = resultado.get("configuracion")
                 _job["finished_at"] = time.time()
 
         _thread = threading.Thread(target=_target_fn, name=f"perovowl-setup-{target}",
@@ -140,3 +155,89 @@ def reset_for_tests() -> None:
         _thread = None
         _job.clear()
         _log.clear()
+
+
+# ── Configuracion de WSL tras instalar el runtime DFT ────────────────────────
+
+def _raiz_datos_en_wsl() -> str | None:
+    """La raiz de datos vista desde WSL, p. ej. C:/Users/x -> /mnt/c/Users/x.
+
+    Es la pieza que hace utilizable el entorno recien creado: ahi es donde
+    `paths.materializar_pipeline` deja `scripts/` y `src/`, y el runner de DFT
+    los importa desde el Python de WSL. Sin esta traduccion el entorno existe
+    pero no encuentra el pipeline.
+    """
+    raiz = paths.data_root()
+    partes = raiz.parts
+    if not partes or ":" not in partes[0]:
+        return None
+    unidad = partes[0][0].lower()
+    resto = "/".join(partes[1:])
+    return f"/mnt/{unidad}/{resto}" if resto else f"/mnt/{unidad}"
+
+
+def configurar_wsl_dft(*, distro: str | None = None,
+                       env_name: str | None = None) -> dict[str, Any]:
+    """Escribe `discovery.wsl` en el generator.yaml del usuario.
+
+    Se llama al terminar bien la instalacion del runtime DFT. Sin esto el
+    entorno queda creado pero nadie sabe donde esta: `setup_wizard` seguiria
+    diciendo «Define discovery.wsl.python».
+    """
+    from buho import setup_wizard
+
+    distros = setup_wizard.distros_wsl()
+    if not distros:
+        return {"escrito": False, "motivo": "no hay distros WSL"}
+    distro = distro or distros[0]
+    env = env_name or setup_wizard.GPAW_ENV
+    rutas = setup_wizard._rutas_gpaw(_config(), env)
+
+    destino = paths.resolve_data("config/generator.yaml")
+    cfg: dict[str, Any] = {}
+    if destino.is_file():
+        try:
+            with destino.open(encoding="utf-8") as fh:
+                cfg = yaml.safe_load(fh) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            return {"escrito": False, "motivo": f"no se pudo leer {destino}: {exc}"}
+    else:
+        # Instalacion nueva: se parte de la copia empaquetada, no de cero, para
+        # no perder el espacio quimico ni las puertas del cribado.
+        try:
+            with paths.bundle_file("config", "generator.yaml").open(encoding="utf-8") as fh:
+                cfg = yaml.safe_load(fh) or {}
+        except (OSError, yaml.YAMLError):
+            cfg = {}
+
+    discovery = cfg.setdefault("discovery", {})
+    if not isinstance(discovery, dict):
+        discovery = cfg["discovery"] = {}
+    wsl = discovery.setdefault("wsl", {})
+    if not isinstance(wsl, dict):
+        wsl = discovery["wsl"] = {}
+
+    proyecto = _raiz_datos_en_wsl()
+    wsl.update({
+        "distro": distro,
+        "env_name": env,
+        "micromamba": rutas["micromamba"],
+        "python": rutas["python"],
+        "mpirun": rutas["mpirun"],
+        "setup_path": rutas["setups"],
+        "driver_python": "python3",
+    })
+    if proyecto:
+        wsl["project_root"] = proyecto
+
+    try:
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        parcial = destino.with_suffix(".yaml.parcial")
+        with parcial.open("w", encoding="utf-8") as fh:
+            yaml.safe_dump(cfg, fh, allow_unicode=True, sort_keys=False)
+        parcial.replace(destino)
+    except OSError as exc:
+        return {"escrito": False, "motivo": f"{type(exc).__name__}: {exc}"}
+
+    return {"escrito": True, "fichero": str(destino), "distro": distro,
+            "env": env, "python": rutas["python"], "project_root": proyecto}
