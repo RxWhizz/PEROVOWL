@@ -186,6 +186,10 @@ jobs:
             `dft_monitor_flutter.exe` **desde dentro** de la carpeta extraída,
             con `engine\` al lado.
 
+            Con eso ya puedes cribar y usar el predictor. Para **lanzar
+            cálculos DFT** hace falta WSL: ver **Requisitos para correr DFT**
+            más abajo.
+
             Si la app dice que no encuentra el motor, casi siempre es el
             antivirus: Windows Defender pone en cuarentena binarios sin firmar
             como `engine\dft-monitor-engine.exe`. Revisa
@@ -217,6 +221,64 @@ jobs:
 
             Se abre en `http://127.0.0.1:8000`. Con `--host 0.0.0.0` se expone en
             la red y exige un token en `monitor.auth.token`.
+
+            ### Requisitos para correr DFT
+
+            Para **mirar el monitor, cribar candidatos y usar el predictor no hace
+            falta nada**: el paquete trae el motor dentro. Lo de aquí abajo es solo
+            para lanzar cálculos DFT.
+
+            En **Windows**, GPAW no corre nativo: se ejecuta dentro de **WSL**. Hacen
+            falta tres cosas, en este orden:
+
+            | | Qué | ¿Lo hace la app? |
+            |---|---|---|
+            | 1 | **WSL** activado | **No.** Necesita administrador y reiniciar |
+            | 2 | Una **distribución** (Ubuntu) | **No.** Pide usuario y contraseña de forma interactiva |
+            | 3 | **GPAW** dentro de la distro | **Sí.** Lo instala el propio botón de arranque; y si ya está, lo encuentra sola |
+
+            > `wsl.exe` existe en **todo** Windows 11 aunque WSL no esté instalado.
+            > Que el comando responda no significa que lo tengas.
+
+            **1. Activar WSL** — PowerShell **como administrador**, y **reiniciar**:
+
+            ```powershell
+            wsl --install
+            ```
+
+            **2. Instalar Ubuntu** (ya sin administrador) y abrirla una vez desde el
+            menú Inicio para crear usuario y contraseña:
+
+            ```powershell
+            wsl --install -d Ubuntu
+            wsl -l -v
+            ```
+
+            Ubuntu es la recomendada: es la que se prueba y la que asumen estos
+            comandos.
+
+            **3. GPAW**: abre la app y pulsa **Arrancar protocolo**. Si falta, el
+            propio botón lo instala (~2.5 GB) y arranca el protocolo al terminar,
+            sin que haya que volver a pulsarlo. Si ya está —aunque sea de otra
+            instalación tuya— lo detecta y se configura sin preguntar.
+
+            Para hacerlo a mano, PowerShell normal:
+
+            ```powershell
+            wsl -- bash -lc 'test -x $HOME/perovowl-micromamba/bin/micromamba || { mkdir -p $HOME/perovowl-micromamba/bin && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba && mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba && chmod +x $HOME/perovowl-micromamba/bin/micromamba; }'
+            wsl -- bash -lc '$HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/perovowl-micromamba -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi'
+            wsl -- bash -lc '$HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version'
+            ```
+
+            El último debe responder `gpaw-24.6.0`. Comillas **simples** a
+            propósito: PowerShell 5.1 destroza las dobles al pasarlas a un
+            ejecutable nativo.
+
+            Cada cálculo DFT reserva ~2 GB de RAM. El arranque rápido mide la máquina
+            y abre solo los trabajos que caben.
+
+            En **Linux** no hay nada de WSL: GPAW corre nativo, en un entorno conda
+            llamado `gpaw246` o el que apuntes con `BUHO_GPAW_PYTHON`.
 
             Comprueba la descarga con `sha256sum -c SHA256SUMS`.
 

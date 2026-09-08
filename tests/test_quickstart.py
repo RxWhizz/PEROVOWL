@@ -414,3 +414,108 @@ def test_sin_poller_se_sigue_pudiendo_arrancar(tmp_path, monkeypatch):
     paso = next(p for p in r["pasos"] if p["paso"] == "configuracion")
     assert paso["ok"] is True
     assert paso["detalle"]["aplicado_en_caliente"] is False
+
+
+# ── El boton instala lo que falta, en vez de mandar a otra pestana ───────────
+
+def _sin_dft(monkeypatch, sondeo):
+    """Una maquina a la que solo le falta GPAW."""
+    from monitor_api.services import quickstart, setup as setup_service
+
+    monkeypatch.setattr(setup_service, "status", lambda **k: {"capacidades": [
+        {"id": "dft", "titulo": "Runtime DFT (GPAW en WSL)", "ok": False,
+         "requerido": True, "error": "x", "remediacion": "y"},
+    ]})
+    monkeypatch.setattr(quickstart, "autoconfigurar_dft",
+                        lambda: {"configurado": False, "sondeo": sondeo})
+
+
+def test_si_solo_falta_gpaw_el_boton_lo_instala(monkeypatch):
+    """Mandar a la pestana Entorno era lo que hacia que cinco versiones
+    seguidas ensenaran la misma pantalla aunque los fallos fueran distintos."""
+    from monitor_api.services import quickstart, setup as setup_service
+
+    _sin_dft(monkeypatch, {"wsl": True, "distros": ["Ubuntu"], "hallado": None})
+    lanzadas = []
+    monkeypatch.setattr(setup_service, "start_install",
+                        lambda t, **k: lanzadas.append(t) or {"status": "running"})
+    monkeypatch.setattr(quickstart, "_arrancar_al_terminar", lambda *a, **k: None)
+    monkeypatch.setattr(quickstart.hwprobe, "sondear", lambda **k: None)
+
+    r = quickstart.arrancar(con_benchmark=False)
+
+    assert lanzadas == ["dft"]
+    assert r["instalando"] is True
+    assert "instalando el runtime DFT" in r["motivo"]
+    assert [p for p in r["pasos"] if p["paso"] == "instalacion"][0]["ok"] is True
+
+
+def test_sin_distro_no_se_intenta_instalar(monkeypatch):
+    """Crear la distro necesita administrador y reiniciar: ahi la app no llega,
+    y lanzar un plan que no puede funcionar solo anade ruido."""
+    from monitor_api.services import quickstart, setup as setup_service
+
+    _sin_dft(monkeypatch, {"wsl": True, "distros": [], "hallado": None})
+    monkeypatch.setattr(setup_service, "start_install",
+                        lambda t, **k: pytest.fail("no deberia instalar sin distro"))
+    monkeypatch.setattr(quickstart.hwprobe, "sondear", lambda **k: None)
+
+    r = quickstart.arrancar(con_benchmark=False)
+
+    assert r["ok"] is False
+    assert r.get("instalando") is None
+    assert "distribucion" in [p for p in r["pasos"]
+                              if p["paso"] == "instalacion"][0]["detalle"]["motivo"]
+
+
+def test_sin_sondeo_no_se_instala_por_si_acaso(monkeypatch):
+    """Descargar 2.5 GB sin haber mirado si hay donde ponerlos es justo lo que
+    no debe hacer un boton. Con la guarda al reves, una prueba que simulaba la
+    falta del runtime llego a lanzar una instalacion de verdad."""
+    from monitor_api.services import quickstart, setup as setup_service
+
+    monkeypatch.setattr(quickstart, "_faltantes", lambda: [
+        {"id": "dft", "titulo": "Runtime DFT", "error": "x", "remediacion": "y"},
+    ])
+    monkeypatch.setattr(setup_service, "start_install",
+                        lambda t, **k: pytest.fail("no se instala sin sondeo"))
+    monkeypatch.setattr(quickstart.hwprobe, "sondear", lambda **k: None)
+
+    r = quickstart.arrancar(con_benchmark=False)
+
+    assert r["motivo"] == "faltan requisitos"
+
+
+def test_la_segunda_pasada_no_vuelve_a_instalar(monkeypatch):
+    """Si el plan no arreglo nada, reintentar en bucle es peor que parar."""
+    from monitor_api.services import quickstart, setup as setup_service
+
+    _sin_dft(monkeypatch, {"wsl": True, "distros": ["Ubuntu"], "hallado": None})
+    monkeypatch.setattr(setup_service, "start_install",
+                        lambda t, **k: pytest.fail("segunda pasada no instala"))
+    monkeypatch.setattr(quickstart.hwprobe, "sondear", lambda **k: None)
+
+    r = quickstart.arrancar(con_benchmark=False, instalar_faltantes=False)
+
+    assert r["ok"] is False
+    assert r["motivo"] == "faltan requisitos"
+
+
+def test_si_falta_algo_mas_que_gpaw_no_se_instala_a_ciegas(monkeypatch):
+    """Instalar el runtime no arregla un motor sin web ni sin core."""
+    from monitor_api.services import quickstart, setup as setup_service
+
+    monkeypatch.setattr(setup_service, "status", lambda **k: {"capacidades": [
+        {"id": "dft", "ok": False, "requerido": True, "error": "x", "remediacion": "y"},
+        {"id": "core", "ok": False, "requerido": True, "error": "z", "remediacion": "w"},
+    ]})
+    monkeypatch.setattr(quickstart, "autoconfigurar_dft",
+                        lambda: {"configurado": False, "sondeo": {"wsl": True,
+                                                                  "distros": ["Ubuntu"]}})
+    monkeypatch.setattr(setup_service, "start_install",
+                        lambda t, **k: pytest.fail("no deberia instalar"))
+    monkeypatch.setattr(quickstart.hwprobe, "sondear", lambda **k: None)
+
+    r = quickstart.arrancar(con_benchmark=False)
+
+    assert r["motivo"] == "faltan requisitos"

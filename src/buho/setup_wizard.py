@@ -643,7 +643,14 @@ def plan_mlff(config: dict[str, Any] | None = None, *,
 
 
 def distros_wsl() -> list[str]:
-    """Distros instaladas. Lista vacia si WSL no esta o no hay ninguna."""
+    """Distros instaladas. Lista vacia si WSL no esta o no hay ninguna.
+
+    Esta es la comprobacion que de verdad dice si hay WSL, no `_wsl_disponible`:
+    `wsl.exe` vive en System32 de todo Windows 11 aunque el subsistema no este
+    instalado, asi que encontrarlo no significa nada. Una maquina real llego con
+    `wsl.exe` presente y WSL sin instalar, y por eso el aviso decia "define la
+    ruta del interprete" en vez de "instala WSL".
+    """
     if not _wsl_disponible():
         return []
     try:
@@ -659,7 +666,15 @@ def distros_wsl() -> list[str]:
     except UnicodeDecodeError:
         salida = proc.stdout.decode("utf-8", errors="replace")
     salida = salida.replace(chr(0), "")
-    return [linea.strip() for linea in salida.splitlines() if linea.strip()]
+    lineas = [linea.strip() for linea in salida.splitlines() if linea.strip()]
+    # Sin distros, algunas versiones no fallan: imprimen una frase
+    # ("Windows Subsystem for Linux has no installed distributions.", o su
+    # traduccion, o el banner de ayuda) y salen con codigo 0. Tomarla por un
+    # nombre lleva a lanzar `wsl.exe -d "Windows Subsystem for..."`, que falla
+    # de una forma que no se parece en nada al problema real. Un nombre de
+    # distro no lleva espacios --- se puede forzar uno con `wsl --import`, pero
+    # tragarse una frase de error es peor que rechazar un nombre raro.
+    return [linea for linea in lineas if not any(c.isspace() for c in linea)]
 
 
 def _rutas_gpaw(config: dict[str, Any] | None, env_name: str) -> dict[str, str]:

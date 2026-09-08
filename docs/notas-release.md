@@ -1,4 +1,4 @@
-# Monitor DFT 0.7.5
+# Monitor DFT 0.7.6
 
 **El pipeline ya no supone que todo es cúbico.** Genera las fases que una
 perovskita de haluro admite de verdad, deja que compitan en energía y **mide**
@@ -13,16 +13,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.5>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.6>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.7.5-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.5-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.7.5-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.7.5-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.7.6-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.6-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.7.6-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.7.6-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -30,17 +30,76 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.7.5-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.7.6-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.7.5-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.7.5-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.7.6-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.7.6-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
 de la carpeta `engine/`, que tiene que quedar **al lado** del `.exe`.
+
+Con eso ya puedes **cribar candidatos y usar el predictor**. Para lanzar
+**cálculos DFT** hacen falta los requisitos de abajo.
+
+#### Requisitos mínimos para DFT
+
+GPAW no corre nativo en Windows: va dentro de **WSL**. Tres pasos, en orden.
+Los dos primeros la app no puede hacerlos —piden administrador y reiniciar—;
+el tercero sí, pero aquí van los comandos por si prefieres hacerlo tú.
+
+**1 · WSL** — PowerShell **como administrador**:
+
+```powershell
+wsl --install
+```
+
+**Reinicia el equipo.** No es opcional: sin reiniciar, lo siguiente falla de
+formas confusas.
+
+> `wsl.exe` existe en **todo** Windows 11 aunque WSL no esté instalado. Que el
+> comando responda no significa que lo tengas.
+
+**2 · La distribución** — ya sin administrador. **Ubuntu** es la recomendada:
+es la que se prueba y la que asumen estos comandos.
+
+```powershell
+wsl --install -d Ubuntu
+wsl -l -v
+```
+
+Ábrela una vez desde el menú Inicio: la primera vez pide **crear usuario y
+contraseña**, es interactivo y por eso no puede lanzarlo la app. `wsl -l -v`
+debe listar `Ubuntu`.
+
+**3 · GPAW** — la app lo instala sola: abre **Arrancar protocolo** y, si falta,
+lo descarga y arranca el protocolo al terminar. Si prefieres hacerlo a mano,
+PowerShell normal:
+
+```powershell
+# 1/3 · micromamba (~10 MB)
+wsl -- bash -lc 'test -x $HOME/perovowl-micromamba/bin/micromamba || { mkdir -p $HOME/perovowl-micromamba/bin && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba && mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba && chmod +x $HOME/perovowl-micromamba/bin/micromamba; }'
+
+# 2/3 · GPAW 24.6 + numpy 1.26 + OpenMPI (~2 GB, tarda)
+wsl -- bash -lc '$HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/perovowl-micromamba -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi'
+
+# 3/3 · comprobar: debe responder gpaw-24.6.0
+wsl -- bash -lc '$HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version'
+```
+
+Cuando el tercero responda `gpaw-24.6.0`, abre la app y pulsa **Arrancar
+protocolo**: encuentra ese entorno solo, sin que configures nada.
+
+> **Comillas simples a propósito.** PowerShell 5.1 destroza las comillas dobles
+> al pasárselas a un ejecutable nativo y `wsl` recibe un script roto. `$HOME` sí
+> funciona entre comillas simples: PowerShell no lo toca y lo expande el bash de
+> WSL.
+
+Detalles —qué ocupa, cuánta RAM pide, qué hacer si falla— en
+[Requisitos para correr DFT](#requisitos-para-correr-dft).
 
 **Ruta corta a proposito**: el motor embebido anida directorios profundos y el
 descompresor de Windows puede saltarse archivos por el limite de 260 caracteres
@@ -55,10 +114,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.7.5-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.7.6-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.7.5-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.7.6-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -71,8 +130,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.7.5-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.7.5-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.7.6-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.7.6-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -80,72 +139,60 @@ tar xzf dft-monitor-desktop-0.7.5-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.7.5-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.7.6-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
 Se abre en `http://127.0.0.1:8000`. Con `--host 0.0.0.0` se expone en la red y
 exige un token en `monitor.auth.token`.
 
-## El runtime DFT (GPAW en WSL) a mano
+## Requisitos para correr DFT
 
-La app instala esto sola desde la pestaña **Entorno**, y desde 0.7.4 lo detecta
-si ya estaba. Esta sección es para cuando prefieres hacerlo tú, o cuando quieres
-saber exactamente qué se va a ejecutar en tu máquina antes de dejar que un botón
-lo haga. Son los mismos comandos que corre el instalador.
+**Para mirar el monitor, cribar candidatos y usar el predictor: nada.** El
+paquete trae el motor dentro; no hace falta Python, Node ni clonar el repo.
+Todo lo de esta sección es solo para lanzar cálculos DFT.
 
-Descarga unos **2.5 GB** entre el entorno y los datasets PAW.
+### En Linux
 
-### 1. Ubuntu dentro de WSL
+GPAW corre nativo: no hay nada de WSL, eso es cosa de Windows. Se instala en un
+entorno conda propio —el mismo camino que usa el instalador de Windows dentro de
+la distro— y la app lo usa directamente:
 
-`wsl.exe` viene de serie en Windows 11 **aunque no haya ninguna distribución
-instalada**. Si el arranque rápido dice que no hay ninguna, este es el paso que
-falta. En **PowerShell como administrador**:
-
-```powershell
-wsl --install -d Ubuntu
+```bash
+micromamba create -y -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi
 ```
 
-Reinicia. Después abre Ubuntu una vez desde el menú Inicio: la primera vez pide
-crear usuario y contraseña de forma interactiva, y por eso la app no puede
-hacerlo por ti. Comprueba que quedó bien:
+El nombre `gpaw246` no es casual: si no le dices nada, el runner busca un entorno
+conda con ese nombre. Para usar otro intérprete, apúntalo con una variable de
+entorno antes de abrir la app:
 
-```powershell
-wsl -l -v
+```bash
+export BUHO_GPAW_PYTHON=/ruta/al/entorno/bin/python
 ```
 
-### 2. GPAW
+(En Linux **no** se usa `discovery.wsl.python` del `generator.yaml`: eso es la
+ruta dentro de WSL y solo la lee el camino de Windows.)
 
-Ya **no** hace falta administrador. PowerShell normal:
+`pip install gpaw` también existe, pero compila contra libxc y BLAS: en una
+máquina limpia falla si no tienes las cabeceras y un compilador.
 
-```powershell
-# micromamba (~10 MB); no hace nada si ya está
-wsl -- bash -lc 'test -x $HOME/perovowl-micromamba/bin/micromamba || { mkdir -p $HOME/perovowl-micromamba/bin && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba && mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba && chmod +x $HOME/perovowl-micromamba/bin/micromamba; }'
+### En Windows
 
-# el entorno con GPAW 24.6, numpy 1.26 y OpenMPI (~2 GB, tarda)
-wsl -- bash -lc '$HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/perovowl-micromamba -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi'
+GPAW va dentro de **WSL**, y los pasos están arriba, junto a la instalación:
+[Requisitos mínimos para DFT](#requisitos-mínimos-para-dft). Resumen de quién
+hace qué:
 
-# datasets PAW: solo se descargan (~500 MB) si conda-forge no los trajo
-wsl -- bash -lc 'test -f $HOME/perovowl-micromamba/envs/gpaw246/lib/python3.12/site-packages/gpaw_data/setups/Cs.PBE.gz || $HOME/perovowl-micromamba/envs/gpaw246/bin/gpaw install-data --register $HOME/perovowl-micromamba/envs/gpaw246/lib/python3.12/site-packages/gpaw_data/setups'
-```
+| | Qué | ¿Lo hace la app? |
+|---|---|---|
+| 1 | **WSL** activado | **No.** Necesita administrador y reiniciar |
+| 2 | Una **distribución** (Ubuntu) | **No.** Pide usuario y contraseña de forma interactiva |
+| 3 | **GPAW** dentro de la distro | **Sí.** Lo instala el propio botón de arranque, y si ya está, lo detecta |
 
-`numpy=1.26` no es un descuido: GPAW aún no admite numpy 2, y por eso el MLFF
-—que sí lo exige— vive en un entorno aparte.
+### Cuánto ocupa y cuánta RAM pide
 
-### 3. Comprobar
-
-```powershell
-wsl -- bash -lc '$HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version'
-```
-
-Debe responder `gpaw-24.6.0`. A partir de ahí no tienes que configurar nada:
-abre la app y pulsa **Arrancar protocolo** — encuentra ese entorno sola y escribe
-la configuración.
-
-> **Comillas.** Todos los comandos usan comillas **simples** a propósito.
-> PowerShell 5.1 destroza las comillas dobles al pasárselas a un ejecutable
-> nativo, y `wsl` recibe un script roto. `$HOME` sí funciona dentro de comillas
-> simples: PowerShell no lo toca y lo expande el bash de WSL.
+Unos **2.5 GB** de descarga entre el entorno y los datasets PAW. Cada cálculo
+DFT reserva **~2 GB de RAM**; el arranque rápido mide la máquina y abre solo los
+trabajos que caben, pero con menos de 4 GB libres irá lento aunque arranque.
 
 ### Si algo falla
 
@@ -163,16 +210,15 @@ Invoke-RestMethod "http://127.0.0.1:$puerto/api/setup/dft/probe" | ConvertTo-Jso
 En la versión web/servidor el puerto es el 8000 y basta la última línea.
 
 Dice si hay `wsl.exe`, qué distros ve, qué intérpretes probó y con qué error
-falló cada uno. Con eso se distingue «no lo encontré» de «no miré», que es
-justo lo que antes no se podía saber desde fuera.
+falló cada uno. Con eso se distingue «no lo encontré» de «no miré».
 
 ## Verificar descargas
 
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.7.5-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.7.5-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.7.6-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.7.6-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -298,6 +344,29 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.7.6
+
+- **El botón de arranque instalaba nada y mandaba a otra pestaña.** Detectaba
+  que faltaba GPAW y te decía «instálalo desde Entorno». Visto desde fuera eso
+  fueron cinco versiones enseñando la misma pantalla —aunque por debajo los
+  fallos fueran distintos—, porque el botón nunca hacía lo único que resolvía el
+  problema. Ahora, si lo **único** que falta es GPAW y hay una distro donde
+  ponerlo, el propio botón lanza la instalación y **arranca el protocolo al
+  terminar**, sin que haya que volver a pulsarlo: después de 2.5 GB de descarga
+  nadie está mirando la pantalla.
+- No instala a ciegas: hace falta una confirmación **positiva** del sondeo —hay
+  WSL y hay distro— antes de descargar nada. Sin haber mirado no se sabe ni si
+  hay dónde ponerlo. Tampoco instala WSL ni la distribución: eso pide
+  administrador y reiniciar, y ahí la app no llega; ese camino se explica, no se
+  ejecuta.
+- **Una frase de error ya no se confunde con el nombre de una distro.** Sin
+  distribuciones, algunas versiones de `wsl.exe` no fallan: imprimen
+  «Windows Subsystem for Linux has no installed distributions.» y salen con
+  código 0. Tomarlo por un nombre llevaba a lanzar `wsl -d "Windows Subsystem
+  for..."`, que falla de una forma que no se parece al problema real.
+- Las notas llevan ahora los **requisitos mínimos** junto a la instalación de
+  Windows: extraer, WSL, distribución, reiniciar y GPAW, con los comandos.
 
 ### Corregido en 0.7.5
 

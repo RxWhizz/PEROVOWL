@@ -22,4 +22,4 @@ from importlib.metadata import PackageNotFoundError, version as _version
 try:
     __version__ = _version("buho")
 except PackageNotFoundError:  # ejecutado desde el repo, sin instalar
-    __version__ = "0.7.5"
+    __version__ = "0.7.6"

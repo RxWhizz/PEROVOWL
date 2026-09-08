@@ -155,6 +155,74 @@ def _explicar_sondeo(sondeo: dict[str, Any]) -> tuple[str, str]:
             "Instálalo desde la pestaña Entorno (~2.5 GB de descarga).")
 
 
+def instalar_runtime_dft(sondeo: dict[str, Any] | None) -> dict[str, Any]:
+    """Lanza la instalacion de GPAW cuando lo unico que falta es GPAW.
+
+    Por que existe
+    --------------
+    El arranque rapido detectaba que faltaba el runtime y **mandaba a otra
+    pestana**. Esa decision fue mia y estuvo mal: desde fuera, cinco versiones
+    seguidas ensenaron la misma pantalla de "faltan requisitos" aunque por
+    debajo fueran fallos distintos, porque el boton nunca hacia lo unico que
+    resolvia el problema. Un boton que dice "arrancar el protocolo completo" y
+    se planta ante su propia dependencia no esta terminado.
+
+    Lo que NO se hace: instalar WSL o la distro. Eso pide administrador y
+    reiniciar, y ahi la app no llega --- ese camino se explica, no se ejecuta.
+    """
+    from . import setup
+
+    # Hace falta una confirmacion POSITIVA de que instalar puede funcionar. Sin
+    # sondeo no se instala: descargar 2.5 GB "por si acaso" es justo lo que no
+    # se debe hacer desde un boton, y sin haber mirado no se sabe ni si hay
+    # donde ponerlos. (Con la guarda al reves, una prueba que simulaba la falta
+    # del runtime lanzo una instalacion de verdad.)
+    if not sondeo or not sondeo.get("wsl") or not sondeo.get("distros"):
+        # Crear la distro necesita administrador y reiniciar: ahi no llegamos.
+        return {"lanzada": False,
+                "motivo": "no consta ninguna distribucion de WSL donde instalar"}
+    try:
+        estado = setup.start_install("dft")
+    except RuntimeError as exc:
+        # Ya hay una instalacion, o el protocolo esta cribando. No es un fallo:
+        # es que ya esta pasando algo.
+        return {"lanzada": False, "motivo": str(exc)}
+    except Exception as exc:  # noqa: BLE001 - no puede tumbar el arranque
+        log.exception("no se pudo lanzar la instalacion del runtime DFT")
+        return {"lanzada": False, "motivo": f"{type(exc).__name__}: {exc}"}
+    if estado.get("status") == "skipped":
+        return {"lanzada": False, "motivo": "el plan no trae ningun paso",
+                "notas": estado.get("notas")}
+    return {"lanzada": True, "estado": estado}
+
+
+def _arrancar_al_terminar(poller: Any, **opciones: Any) -> None:
+    """Espera a que acabe la instalacion y arranca el protocolo si salio bien.
+
+    Sin esto habria que volver a pulsar el boton, y despues de una descarga de
+    2.5 GB nadie esta mirando la pantalla.
+    """
+    from . import setup
+
+    def _esperar() -> None:
+        while True:
+            estado = setup.job()
+            if not estado.get("running"):
+                break
+            time.sleep(5)
+        if setup.job().get("status") != "ok":
+            return
+        try:
+            arrancar(poller=poller, instalar_faltantes=False, con_benchmark=False,
+                     **opciones)
+        except Exception:  # noqa: BLE001 - un hilo no puede morir mudo
+            log.exception("no se pudo arrancar el protocolo tras instalar")
+
+    hilo = threading.Thread(target=_esperar, name="quickstart-tras-instalar",
+                            daemon=True)
+    hilo.start()
+
+
 def _faltantes(*, autoconfigurar: bool = True) -> list[dict[str, Any]]:
     """Capacidades requeridas que no estan listas.
 
@@ -254,8 +322,14 @@ def arrancar(
     use_mlff: bool | None = None,
     dry_run: bool = False,
     con_benchmark: bool = True,
+    instalar_faltantes: bool = True,
 ) -> dict[str, Any]:
-    """Mide, configura, comprueba y lanza. Devuelve el detalle de cada paso."""
+    """Mide, configura, comprueba, **instala lo que falte** y lanza.
+
+    `instalar_faltantes=False` es para la segunda pasada, la que corre cuando la
+    instalacion ya termino: sin ella, un plan que no arregla nada volveria a
+    lanzarse en bucle.
+    """
     global _ultimo
     pasos: list[dict[str, Any]] = []
     inicio = time.time()
@@ -298,10 +372,26 @@ def arrancar(
         except (OSError, RuntimeError) as exc:
             pasos.append(_paso("configuracion", False, error=str(exc)))
 
-    # 3 - Prerequisitos: aqui se para, antes de gastar nada
+    # 3 - Prerequisitos. Si lo unico que falta es GPAW, se instala: mandar a
+    #     otra pestana era lo que hacia que esto pareciera el mismo fallo una
+    #     version tras otra.
     faltan = _faltantes()
     pasos.append(_paso("prerequisitos", not faltan, {"faltantes": faltan}))
     if faltan:
+        solo_dft = [f for f in faltan if f.get("id") == "dft"]
+        if instalar_faltantes and len(faltan) == len(solo_dft) == 1:
+            instalacion = instalar_runtime_dft(solo_dft[0].get("sondeo"))
+            pasos.append(_paso("instalacion", bool(instalacion.get("lanzada")),
+                               instalacion))
+            if instalacion.get("lanzada"):
+                _arrancar_al_terminar(poller, max_rounds=max_rounds,
+                                      use_mlff=use_mlff, dry_run=dry_run)
+                return _terminar(
+                    False,
+                    "instalando el runtime DFT (~2.5 GB); el protocolo arranca solo "
+                    "al terminar",
+                    instalando=True,
+                )
         return _terminar(False, "faltan requisitos")
 
     from . import discovery

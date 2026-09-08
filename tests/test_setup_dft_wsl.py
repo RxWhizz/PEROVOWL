@@ -456,3 +456,29 @@ def test_el_sondeo_mira_si_hay_distros_antes_de_buscar_interpretes(monkeypatch):
     assert s["distros"] == []
     assert "ninguna distro" in s["motivo"]
     assert not llamadas, "no hay a quien preguntarle: no se lanza ningun bash"
+
+
+def test_una_frase_de_error_no_se_toma_por_el_nombre_de_una_distro(monkeypatch):
+    """Sin distros, algunas versiones de wsl.exe no fallan: imprimen una frase y
+    salen con codigo 0. Tomarla por un nombre lleva a `wsl -d "Windows Subsystem
+    for Linux has no installed distributions."`, que falla de una forma que no
+    se parece al problema real --- que es que no hay WSL."""
+    class _Proc:
+        returncode = 0
+        stdout = "Windows Subsystem for Linux has no installed distributions.\n".encode("utf-16-le")
+
+    monkeypatch.setattr(setup_wizard, "_wsl_disponible", lambda: True)
+    monkeypatch.setattr(setup_wizard.subprocess, "run", lambda *a, **k: _Proc())
+
+    assert setup_wizard.distros_wsl() == []
+
+
+def test_los_nombres_de_distro_normales_siguen_pasando(monkeypatch):
+    class _Proc:
+        returncode = 0
+        stdout = "Ubuntu\nDebian\nkali-linux\nUbuntu-22.04\n".encode("utf-16-le")
+
+    monkeypatch.setattr(setup_wizard, "_wsl_disponible", lambda: True)
+    monkeypatch.setattr(setup_wizard.subprocess, "run", lambda *a, **k: _Proc())
+
+    assert setup_wizard.distros_wsl() == ["Ubuntu", "Debian", "kali-linux", "Ubuntu-22.04"]
