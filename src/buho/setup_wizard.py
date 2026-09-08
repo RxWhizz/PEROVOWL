@@ -395,6 +395,46 @@ def _check_paw(project_root: Path | None, config: dict[str, Any] | None = None) 
     )
 
 
+def _gpaw_local(wsl_cfg: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Un interprete de este sistema que importe GPAW, o None.
+
+    Fuera de Windows el runtime no vive en WSL, pero tampoco dentro del binario:
+    `dft_runtime` lanza un Python externo. Se prueban las mismas fuentes que el,
+    y en el mismo orden, para que la pantalla de Entorno no pueda decir algo
+    distinto de lo que hara el runner.
+    """
+    candidatos: list[str] = []
+    for var in ("BUHO_GPAW_PYTHON", "GPAW_PYTHON"):
+        valor = os.environ.get(var)
+        if valor:
+            candidatos.append(valor)
+    configurado = (wsl_cfg or {}).get("python")
+    if configurado:
+        candidatos.append(str(configurado))
+    from shutil import which
+    for nombre in ("python3", "python"):
+        ruta = which(nombre)
+        if ruta:
+            candidatos.append(ruta)
+
+    vistos: set[str] = set()
+    for python in candidatos:
+        if python in vistos:
+            continue
+        vistos.add(python)
+        try:
+            proc = subprocess.run(
+                [python, "-c", "import gpaw,ase;print(gpaw.__version__,ase.__version__)"],
+                capture_output=True, text=True, timeout=60, check=False)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        partes = (proc.stdout or "").split()
+        if proc.returncode == 0 and partes:
+            return {"python": python, "gpaw": partes[0],
+                    "ase": partes[1] if len(partes) > 1 else None}
+    return None
+
+
 def _check_dft(config: dict[str, Any] | None) -> dict[str, Any]:
     """Runtime GPAW. En Windows vive en WSL; aquí solo se comprueba, no se toca."""
     discovery = (config or {}).get("discovery", {}) or {}
@@ -403,11 +443,22 @@ def _check_dft(config: dict[str, Any] | None) -> dict[str, Any]:
     python = wsl_cfg.get("python")
 
     if sys.platform != "win32":
-        ok = _importable("gpaw")
-        return _capacidad("dft", "Runtime DFT (GPAW)", ok,
-                          detalle={"backend": "local", "gpaw": _importable("gpaw")},
-                          error=None if ok else "GPAW no es importable en este intérprete.",
-                          remediacion="" if ok else "pip install gpaw")
+        # OJO: no vale `_importable("gpaw")`. El motor publicado es un binario
+        # congelado que EXCLUYE gpaw a proposito (son cientos de MB y el DFT
+        # corre como proceso aparte), asi que preguntarle a su propio
+        # interprete da siempre que no --- aunque GPAW este perfectamente
+        # instalado en el sistema. En el .deb y el tarball, el DFT salia rojo
+        # permanente. Se comprueba el interprete que el runner usa de verdad.
+        hallado = _gpaw_local(wsl_cfg)
+        return _capacidad(
+            "dft", "Runtime DFT (GPAW)", hallado is not None,
+            detalle={"backend": "local", **(hallado or {})},
+            error=None if hallado else
+                  "Ningun interprete con GPAW: se probaron BUHO_GPAW_PYTHON, "
+                  "el entorno conda y el python3 del sistema.",
+            remediacion="" if hallado else
+                        "Instala GPAW (conda-forge) y apunta BUHO_GPAW_PYTHON "
+                        "al Python de ese entorno.")
 
     if not _wsl_disponible():
         return _capacidad("dft", "Runtime DFT (GPAW en WSL)", False,

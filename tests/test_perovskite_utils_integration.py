@@ -3,7 +3,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from perovowl.generate import HeuristicGenerator as PerovowlGenerator
+import pytest
+
+# `perovskite-utils` es una dependencia de git (ver requirements.txt), no un
+# paquete del repositorio. Sin ella este modulo no se puede ni recolectar, y un
+# ImportError en la recoleccion aborta la suite ENTERA --- no solo este fichero.
+# CI la instala, asi que alli el contrato se comprueba de verdad; en un entorno
+# de desarrollo sin ella, saltarlo es preferible a no poder correr nada.
+pytest.importorskip(
+    "perovowl",
+    reason="requiere la dependencia de git perovskite-utils (requirements.txt)",
+)
+
+from perovowl.generate import HeuristicGenerator as PerovowlGenerator  # noqa: E402
 
 from buho.generator.heuristic_generator import HeuristicGenerator as LegacyGenerator
 

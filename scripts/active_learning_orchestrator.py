@@ -29,7 +29,7 @@ import hashlib
 import json
 import sys
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -178,7 +178,7 @@ class Orchestrator:
             "train_mae": round(train_mae, 5), "test_mae": round(test_mae, 5),
             "train_rmse": round(train_rmse, 5), "test_rmse": round(test_rmse, 5),
             "overfit_ratio": overfit,
-            "ts": datetime.utcnow().isoformat() + "Z",
+            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         # append a la curva
         if CURVE_CSV.exists():

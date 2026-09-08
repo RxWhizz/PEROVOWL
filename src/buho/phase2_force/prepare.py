@@ -6,7 +6,7 @@ import argparse
 import json
 import shutil
 import string
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -94,7 +94,7 @@ IS_MASTER = world.rank == 0
 
 def _now():
     import datetime
-    return datetime.datetime.utcnow().isoformat() + "Z"
+    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _read_status():
@@ -431,7 +431,7 @@ def _build_phase1_seed_structure(candidate: dict[str, Any], cfg: dict[str, Any],
         "tolerance_t": candidate.get("tolerance_t"),
         "oct_factor": candidate.get("oct_factor"),
         "random_seed": cfg.get("random_seed", 42),
-        "build_date": datetime.utcnow().isoformat() + "Z",
+        "build_date": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -473,7 +473,7 @@ def _write_job_metadata(job_dir: Path, row: dict[str, str], labels: list[dict[st
         "mace_prerelax": mace_info or {},
         "dft_policy": "MACE-MP-0 relax -> PBE single-point E+F sobre K rattled (sin U, MPtrj)",
         "selection_row": row,
-        "prepared_at": datetime.utcnow().isoformat() + "Z",
+        "prepared_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     })
     metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -487,7 +487,7 @@ def _write_status(job_dir: Path, row: dict[str, str], labels: list[dict[str, Any
         "selection_rank": int(row["selection_rank"]),
         "n_labels_expected": len(labels),
         "labels_expected": labels,
-        "created": datetime.utcnow().isoformat() + "Z",
+        "created": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     (job_dir / "status.json").write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -563,7 +563,7 @@ def prepare_batch(batch_id: int, config_path: Path = ROOT / "config" / "generato
         "n_missing_candidate_json": len(missing),
         "dry_run": dry_run,
         "planned_examples": planned[:10],
-        "prepared_at": datetime.utcnow().isoformat() + "Z",
+        "prepared_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     if not dry_run:
         write_json(runs_dir / f"batch_{batch_id:03d}" / "phase2_force_batch_manifest.json", manifest)

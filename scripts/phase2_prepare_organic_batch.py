@@ -19,7 +19,7 @@ import hashlib
 import json
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -237,7 +237,7 @@ def main() -> None:
         atoms, build_info = build_structure(cand, rng)
         job_dir.mkdir(parents=True, exist_ok=True)
         atoms.write(str(job_dir / "structure.cif"))
-        t0 = datetime.utcnow()
+        t0 = datetime.now(timezone.utc)
         try:
             mace_info = relax_with_mace(atoms)
             atoms.write(str(job_dir / "structure.cif"))
@@ -262,21 +262,21 @@ def main() -> None:
             "organic_real": True, "n_atoms": len(atoms),
             "build": build_info, "mace_prerelax": mace_info,
             "dft_policy": "MA/FA explicitos + MACE relax -> PBE single-point E+F (sin U)",
-            "prepared_at": datetime.utcnow().isoformat() + "Z",
+            "prepared_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         (job_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
         (job_dir / "status.json").write_text(json.dumps({
             "status": "pending", "candidate_id": cid, "formula": row["formula"],
             "phase2_batch_id": BATCH_ID, "selection_rank": int(row["selection_rank"]),
             "n_labels_expected": len(labels), "labels_expected": labels,
-            "created": datetime.utcnow().isoformat() + "Z",
+            "created": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }, indent=2))
 
         out_row = dict(row)
         out_row.update({"phase2_batch_id": BATCH_ID, "slot_in_batch": slot,
                         "n_dft_labels_expected": 1, "dft_plan": "pbe_organic_real"})
         csv_rows.append(out_row)
-        dt = (datetime.utcnow() - t0).total_seconds()
+        dt = (datetime.now(timezone.utc) - t0).total_seconds()
         print(f"[{slot:2d}] {row['formula']:34s} n_at={len(atoms):3d} "
               f"mol={build_info['n_molecules']} vol/at={mace_info.get('vol_per_atom_after','?')} "
               f"fmax={mace_info.get('mace_fmax_final','?')} ({dt:.0f}s)", flush=True)
@@ -289,7 +289,7 @@ def main() -> None:
             w.writerows(csv_rows)
         print(f"\nCSV: {out_csv}")
     manifest = {"batch_id": BATCH_ID, "n_prepared": len(csv_rows),
-                "organic_real": True, "prepared_at": datetime.utcnow().isoformat() + "Z"}
+                "organic_real": True, "prepared_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
     (batch_dir / "phase2_force_batch_manifest.json").write_text(json.dumps(manifest, indent=2))
     print(f"manifest: {batch_dir}/phase2_force_batch_manifest.json")
 

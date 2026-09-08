@@ -13,6 +13,18 @@ import pathlib
 import pytest
 
 
+# Este modulo valida una instalacion de GPAW, no el codigo del repositorio.
+# Donde GPAW no esta --- Windows, y los runners de CI, porque vive en WSL o en un
+# entorno conda aparte--- lo unico que puede decir es "no esta instalado", y eso
+# como fallo es ruido: enmascara regresiones de verdad y, ahora que las pruebas
+# bloquean la publicacion, impediria publicar por un hecho del entorno.
+pytest.importorskip(
+    "gpaw",
+    reason="tests de validacion de GPAW; el runtime vive en WSL o en un entorno "
+           "conda aparte, no en el interprete que corre las pruebas",
+)
+
+
 # ---------------------------------------------------------------------------
 # T0 — Sanity imports
 # ---------------------------------------------------------------------------
@@ -201,7 +213,13 @@ def test_gpw_pb_bandgap_unchanged(mat: str):
 
 @pytest.mark.slow
 def test_csni3_preconv_gpw_exists():
-    """pre_r2scan.gpw debe existir después de lanzar preconv con MSR1."""
+    """pre_r2scan.gpw debe existir después de lanzar preconv con MSR1.
+
+    Se salta si no hay ningún cálculo hecho: comprueba el resultado de una
+    corrida previa, y donde no se ha corrido nada su ausencia no es un fallo.
+    """
+    if not CALC_BASE.is_dir():
+        pytest.skip(f"sin cálculos previos en {CALC_BASE}")
     gpw = CALC_BASE / "CsSnI3" / "06_r2scan" / "pre_r2scan.gpw"
     assert gpw.exists(), (
         "pre_r2scan.gpw no encontrado. "

@@ -394,7 +394,7 @@ def cleanup_stale_running(batch_dir: Path) -> int:
             "status": "pending",
             "recovered_from": "stale-running",
             "stale_pid": pid,
-            "recovered_at": datetime.utcnow().isoformat() + "Z",
+            "recovered_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         })
         n += 1
     return n
@@ -464,7 +464,7 @@ def launch_job(
         "status": "running",
         "pid": proc.pid,
         "mpi_cores": cores,
-        "started_at": datetime.utcnow().isoformat() + "Z",
+        "started_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     })
     log(batch_dir, f"LAUNCH {job_dir.name} pid={proc.pid} cores={cores}")
     return Slot(job_dir, proc)
@@ -480,7 +480,7 @@ def check_slot(batch_dir: Path, slot: Slot) -> bool:
             "status": "failed",
             "returncode": ret,
             "elapsed_min": round(slot.elapsed_min, 1),
-            "finished_at": datetime.utcnow().isoformat() + "Z",
+            "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         })
     log(batch_dir, f"DONE {slot.job_dir.name} status={read_status(slot.job_dir).get('status')} rc={ret} elapsed={slot.elapsed_min:.1f} min")
     return True

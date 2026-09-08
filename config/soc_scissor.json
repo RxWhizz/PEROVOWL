@@ -1,39 +1,110 @@
 {
-  "generado": "2026-09-04T15:20:40.432241Z",
-  "metodo": "SCF PBE (ecut=300 eV, kpts=[2, 2, 2], gamma-centrada) sobre CsBI3 cubica; SOC perturbativo post-SCF.",
-  "nota": "chi_SOC es la correccion a sumar al Eg de PBE del cribado. Es negativa: el SOC hunde el minimo de la banda de conduccion y cierra el gap. Depende del elemento B porque es un efecto relativista que crece con el numero atomico.",
+  "generado": "2026-09-08T08:50:35.302049Z",
+  "metodo": "SCF PBE (ecut=300 eV, kpts=[2, 2, 2], gamma-centrada) sobre CsBX3 cubica; SOC perturbativo post-SCF. Misma corrida que config/eg_scale.json, para que la etiqueta de entrenamiento y la correccion de escala esten en la misma escala por construccion.",
+  "nota": "chi_SOC es la correccion a sumar al Eg de PBE del cribado. Es negativa: el SOC hunde el minimo de la banda de conduccion y cierra el gap. Depende de B por ser un efecto relativista que crece con Z, y TAMBIEN de X: medido, CsPbI3 da -0.630 y CsPbBr3 -1.340 con el mismo Pb. La tabla por-B se conserva como respaldo para composiciones cuyo X no este calibrado.",
+  "chi_soc_bx_eV": {
+    "Pb": {
+      "I": -0.6301,
+      "Br": -1.3404,
+      "Cl": -1.3186
+    },
+    "Sn": {
+      "I": -0.0607,
+      "Br": -0.2866,
+      "Cl": -0.3685
+    },
+    "Ge": {
+      "I": -0.3159,
+      "Br": -0.1774,
+      "Cl": -0.154
+    }
+  },
   "chi_soc_eV": {
-    "Pb": -0.6302,
+    "Pb": -0.6301,
     "Sn": -0.0607,
-    "Ge": -0.2205
+    "Ge": -0.3159
   },
   "detalle": [
     {
       "B": "Pb",
+      "X": "I",
       "referencia": "CsPbI3",
       "a_lat_A": 6.1834,
-      "n_electrones": 44,
       "Eg_pbe_eV": 1.0305,
       "Eg_pbe_soc_eV": 0.4004,
-      "chi_soc_eV": -0.6302
+      "chi_soc_eV": -0.6301
+    },
+    {
+      "B": "Pb",
+      "X": "Br",
+      "referencia": "CsPbBr3",
+      "a_lat_A": 5.8716,
+      "Eg_pbe_eV": 1.4181,
+      "Eg_pbe_soc_eV": 0.0777,
+      "chi_soc_eV": -1.3404
+    },
+    {
+      "B": "Pb",
+      "X": "Cl",
+      "referencia": "CsPbCl3",
+      "a_lat_A": 5.604,
+      "Eg_pbe_eV": 1.8302,
+      "Eg_pbe_soc_eV": 0.5116,
+      "chi_soc_eV": -1.3186
     },
     {
       "B": "Sn",
+      "X": "I",
       "referencia": "CsSnI3",
       "a_lat_A": 6.2192,
-      "n_electrones": 44,
       "Eg_pbe_eV": 0.2599,
       "Eg_pbe_soc_eV": 0.1992,
       "chi_soc_eV": -0.0607
     },
     {
+      "B": "Sn",
+      "X": "Br",
+      "referencia": "CsSnBr3",
+      "a_lat_A": 5.8027,
+      "Eg_pbe_eV": 0.3336,
+      "Eg_pbe_soc_eV": 0.047,
+      "chi_soc_eV": -0.2866
+    },
+    {
+      "B": "Sn",
+      "X": "Cl",
+      "referencia": "CsSnCl3",
+      "a_lat_A": 5.5674,
+      "Eg_pbe_eV": 0.7715,
+      "Eg_pbe_soc_eV": 0.403,
+      "chi_soc_eV": -0.3685
+    },
+    {
       "B": "Ge",
+      "X": "I",
       "referencia": "CsGeI3",
-      "a_lat_A": 5.86,
-      "n_electrones": 34,
-      "Eg_pbe_eV": 0.2543,
-      "Eg_pbe_soc_eV": 0.0337,
-      "chi_soc_eV": -0.2205
+      "a_lat_A": 5.9772,
+      "Eg_pbe_eV": 0.4728,
+      "Eg_pbe_soc_eV": 0.1569,
+      "chi_soc_eV": -0.3159
+    },
+    {
+      "B": "Ge",
+      "X": "Br",
+      "referencia": "CsGeBr3",
+      "a_lat_A": 5.6275,
+      "Eg_pbe_eV": 0.6924,
+      "Eg_pbe_soc_eV": 0.515,
+      "chi_soc_eV": -0.1774
+    },
+    {
+      "B": "Ge",
+      "X": "Cl",
+      "referencia": "CsGeCl3",
+      "a_lat_A": 5.4305,
+      "Eg_pbe_eV": 1.1924,
+      "Eg_pbe_soc_eV": 1.0384,
+      "chi_soc_eV": -0.154
     }
   ]
 }

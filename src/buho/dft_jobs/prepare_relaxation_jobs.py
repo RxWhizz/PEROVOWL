@@ -32,7 +32,7 @@ import shutil
 import string
 import sys
 import textwrap
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -353,7 +353,7 @@ class RelaxationJobPreparer:
         script = _INPUT_TEMPLATE.substitute(
             formula=c.formula,
             candidate_id=c.candidate_id,
-            generated_at=datetime.utcnow().isoformat() + "Z",
+            generated_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             src_path=str(self._root / "src"),
             config_path=str(self._gpaw_config) if self._gpaw_config.exists() else "",
             is_supercell=str(is_supercell),
@@ -388,6 +388,6 @@ class RelaxationJobPreparer:
             "status": "pending",
             "candidate_id": c.candidate_id,
             "formula": c.formula,
-            "created": datetime.utcnow().isoformat() + "Z",
+            "created": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         (job_dir / "status.json").write_text(json.dumps(status, indent=2), encoding="utf-8")

@@ -1,9 +1,16 @@
 # Monitor DFT 0.7.7
 
-**El pipeline ya no supone que todo es cúbico.** Genera las fases que una
-perovskita de haluro admite de verdad, deja que compitan en energía y **mide**
-en cuál quedó el material en vez de decidirlo por decreto. Sobre CsPbI₃ la fase
+**La competencia de fases ya se puede medir.** El pipeline genera las
+distorsiones de inclinación que una perovskita de haluro admite de verdad
+(Glazer a⁰a⁰a⁰, a⁰a⁰c⁻, a⁰a⁰c⁺, a⁻a⁻a⁻, a⁻a⁻c⁺), las deja competir en energía e
+identifica el grupo espacial de la ganadora con spglib. Sobre CsPbI₃ la fase
 cúbica pierde por 124 meV por fórmula, que es lo que dice el experimento.
+
+> **Todavía como herramienta, no dentro del protocolo.** El módulo se usa desde
+> `scripts/probar_fases_cspbi3.py` y necesita un potencial interatómico (MLFF).
+> El bucle autónomo **sigue preparando la fase cúbica**: falta conectar la
+> relajación del MLFF (ver *Limitaciones conocidas*). Versiones anteriores de
+> estas notas daban a entender lo contrario.
 
 Interfaz gráfica del pipeline de cribado de perovskitas: genera candidatos, los
 criba con la cascada HTS, prepara y lanza los cálculos DFT, y sigue el progreso

@@ -28,18 +28,25 @@ datas = [
     (str(_gen_stage), "config"),
 ]
 
-# Tabla de correccion scissor por elemento del sitio B. Sin ella,
-# `buho.bandgap_scissor` no corrige el bandgap por acoplamiento espin-orbita y
-# las etiquetas de entrenamiento salen crudas -- en silencio. Estaba fuera del
-# bundle, asi que la correccion nunca se aplico en un binario publicado.
-_soc = ROOT / "config" / "soc_scissor.json"
-if _soc.is_file():
-    datas.append((str(_soc), "config"))
-else:
-    raise SystemExit(
-        f"Falta {_soc}. Generala con:\n"
-        "  python scripts/calibrate_soc_scissor.py --out config/soc_scissor.json"
-    )
+# Las DOS tablas de calibracion del bandgap.
+#
+# Sin `soc_scissor.json` las etiquetas de entrenamiento salen sin correccion de
+# espin-orbita. Sin `eg_scale.json` la prediccion no se lleva a escala
+# experimental, y la ventana fotovoltaica [1.1, 1.8] eV --- definida sobre el
+# gap MEDIDO--- se aplica sobre el calculado, que es ~1 eV menor. Eso no es un
+# sesgo: el Tier 1 descarta el 100 % de los candidatos y el protocolo se declara
+# terminado sin lanzar un solo calculo. Es el issue #7, que estaba arreglado en
+# el codigo y sin empaquetar --- o sea, sin arreglar donde importa.
+for _nombre, _generador in (
+    ("soc_scissor.json",
+     "python scripts/calibrate_soc_scissor.py --out config/soc_scissor.json"),
+    ("eg_scale.json",
+     "python scripts/calibrate_eg_scale.py --kpts 2 --out config/eg_scale.json"),
+):
+    _tabla = ROOT / "config" / _nombre
+    if not _tabla.is_file():
+        raise SystemExit(f"Falta {_tabla}. Generala con:" + chr(10) + f"  {_generador}")
+    datas.append((str(_tabla), "config"))
 
 # El pipeline en fuente. El runner de DFT no es codigo del binario: es un
 # proceso aparte que lanza un Python externo (en Windows, el de WSL con GPAW), y

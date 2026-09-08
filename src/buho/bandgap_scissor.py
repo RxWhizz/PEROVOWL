@@ -81,12 +81,18 @@ def cargar_tabla(ruta: Path | str | None = None) -> dict[str, float]:
     if clave in _cache:
         return _cache[clave]
 
-    tabla: dict[str, float] = {}
+    tabla: dict[str, Any] = {}
     encontrada = next((c for c in candidatas if c.is_file()), None)
     if encontrada is not None:
         try:
             datos = json.loads(encontrada.read_text(encoding="utf-8"))
             tabla = {k: float(v) for k, v in (datos.get("chi_soc_eV") or {}).items()}
+            # Por (B, X) cuando esta: el SOC depende del haluro tanto como del
+            # metal --- medido, CsPbI3 da -0.630 y CsPbBr3 -1.340 con el mismo Pb.
+            bx = datos.get("chi_soc_bx_eV") or {}
+            if bx:
+                tabla["_bx"] = {b: {x: float(v) for x, v in por_x.items()}
+                                for b, por_x in bx.items()}
         except (OSError, ValueError, TypeError) as exc:
             log.warning("tabla de scissor ilegible en %s: %s", encontrada, exc)
     else:
@@ -101,21 +107,41 @@ def cargar_tabla(ruta: Path | str | None = None) -> dict[str, float]:
     return tabla
 
 
-def chi_soc(fracciones_b: dict[str, float], tabla: dict[str, float] | None = None) -> float:
-    """χ_SOC del candidato, ponderado por ocupación del sitio B.
+def chi_soc(fracciones_b: dict[str, float],
+            tabla: dict[str, Any] | None = None,
+            fracciones_x: dict[str, float] | None = None) -> float:
+    """χ_SOC del candidato, ponderado por ocupación de los dos sitios.
 
-    Una composición con el sitio B mezclado interpola entre los χ de sus
-    elementos, igual que se interpolan los radios. Un elemento sin calibrar
-    aporta 0: es preferible corregir de menos que inventar el valor.
+    Una composición mezclada interpola entre los χ de sus elementos, igual que
+    se interpolan los radios. Un elemento sin calibrar aporta 0: es preferible
+    corregir de menos que inventar el valor.
+
+    Con `fracciones_x` y una tabla que traiga `chi_soc_bx_eV`, el χ sale de la
+    pareja (B, X). Sin ellas cae a la tabla por-B, que es el yoduro de
+    referencia. La diferencia no es un matiz: para Pb, el bromuro tiene el
+    doble de corrección que el yoduro.
     """
     tabla = cargar_tabla() if tabla is None else tabla
     if not tabla or not fracciones_b:
         return 0.0
-    return sum(f * tabla.get(sp, 0.0) for sp, f in fracciones_b.items())
+    bx = tabla.get("_bx") or {}
+    if bx and fracciones_x:
+        total = 0.0
+        for b, fb in fracciones_b.items():
+            por_x = bx.get(b)
+            if por_x is None:
+                total += float(fb) * float(tabla.get(b, 0.0) or 0.0)
+                continue
+            for x, fx in fracciones_x.items():
+                total += float(fb) * float(fx) * float(por_x.get(x, 0.0))
+        return total
+    return sum(f * float(tabla.get(sp, 0.0) or 0.0)
+               for sp, f in fracciones_b.items() if sp != "_bx")
 
 
 def corregir(eg_pbe: float | None, fracciones_b: dict[str, float],
-             tabla: dict[str, float] | None = None) -> float | None:
+             tabla: dict[str, Any] | None = None,
+             fracciones_x: dict[str, float] | None = None) -> float | None:
     """Bandgap de cribado con el SOC sumado. `None` entra y sale como `None`.
 
     No se recorta a cero a propósito: un gap corregido negativo significa que
@@ -124,7 +150,7 @@ def corregir(eg_pbe: float | None, fracciones_b: dict[str, float],
     """
     if eg_pbe is None:
         return None
-    return float(eg_pbe) + chi_soc(fracciones_b, tabla)
+    return float(eg_pbe) + chi_soc(fracciones_b, tabla, fracciones_x)
 
 
 def describir(tabla: dict[str, float] | None = None) -> dict[str, Any]:

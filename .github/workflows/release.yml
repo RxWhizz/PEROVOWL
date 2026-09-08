@@ -38,6 +38,40 @@ jobs:
             fi
           fi
 
+  # ── Nada se publica sin pasar las pruebas ──────────────────────────────────
+  #
+  # Antes no habia ningun trabajo de pruebas: el workflow solo construia y
+  # publicaba. Las 750 pruebas de Python existian y ninguna bloqueaba una
+  # release, asi que un binario roto se publicaba igual --- paso cuatro veces
+  # seguidas con spglib. Esto es la puerta que faltaba.
+  pruebas:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]" || python -m pip install -r requirements.txt
+          python -m pip install pytest
+
+      - name: pytest
+        run: python -m pytest -q
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: flutter test
+        working-directory: apps/dft_monitor_flutter
+        run: |
+          flutter pub get
+          flutter test
+
   # ── El SPA se compila una sola vez y lo comparten las dos plataformas ───────
   frontend:
     runs-on: ubuntu-22.04
@@ -59,7 +93,7 @@ jobs:
           retention-days: 1
 
   build:
-    needs: [version, frontend]
+    needs: [version, frontend, pruebas]
     strategy:
       fail-fast: false
       matrix:

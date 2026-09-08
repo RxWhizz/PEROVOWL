@@ -1563,7 +1563,13 @@ class DiscoveryLoop:
             # `band_gap_gga_eV` conserva el valor crudo para poder auditar.
             cand = candidatos.get(str(row.get("candidate_id")))
             fracciones_b = cand.fractions.get("B", {}) if cand is not None else {}
-            eg_corregido = bandgap_scissor.corregir(eg, fracciones_b, tabla_soc)
+            # Tambien las de X: el SOC depende del haluro tanto como del metal.
+            # Medido a la malla del cribado, CsPbI3 da -0.630 y CsPbBr3 -1.340
+            # con el mismo Pb; corregir solo por B metia 0.7 eV de sesgo en las
+            # etiquetas de los bromuros.
+            fracciones_x = cand.fractions.get("X", {}) if cand is not None else {}
+            eg_corregido = bandgap_scissor.corregir(eg, fracciones_b, tabla_soc,
+                                                    fracciones_x)
             rows.append({
                 "material_id": row.get("candidate_id"),
                 "candidate_id": row.get("candidate_id"),

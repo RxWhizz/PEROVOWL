@@ -10,7 +10,7 @@ import statistics
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -1013,7 +1013,7 @@ class DFTPoller:
             if not reason:
                 continue
 
-            now = datetime.utcnow().isoformat() + "Z"
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             _write_status_update(job_dir, {
                 "status": "failed",
                 "self_healed": True,

@@ -19,7 +19,7 @@ import argparse
 import json
 import sys
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -140,7 +140,7 @@ def main():
         # Solo el nombre: la ruta absoluta viaja dentro del binario
         # distribuido y publica la disposicion de discos de quien entreno.
         "source_relax_dir": Path(args.relax_dir).name,
-        "trained_at": datetime.utcnow().isoformat() + "Z",
+        "trained_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     Path(str(out).replace(".pkl", ".metrics.json")).write_text(json.dumps(metrics, indent=2))
     print(f"Modelo guardado: {out}")

@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -77,7 +77,7 @@ class BatchLoop:
     def run_batch(self, batch_id: int, dry_run: bool = False,
                   launch: bool = False) -> dict:
         bdir = self._batch_dir(batch_id)
-        t0 = datetime.utcnow().isoformat() + "Z"
+        t0 = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         # 1. Generar (con dedup persistente entre batches)
         registry = self._scr.get("registry_path")
@@ -162,7 +162,7 @@ class BatchLoop:
         manifest["n_dft_collected"] = int(len(res))
         manifest["n_dft_converged"] = int(res["converged"].sum()) if "converged" in res else 0
         manifest["n_trusted"] = int(len(trusted))
-        manifest["finalized_at"] = datetime.utcnow().isoformat() + "Z"
+        manifest["finalized_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         n_appended = self._append_training(trusted, batch_id)
         manifest["n_appended_training"] = n_appended

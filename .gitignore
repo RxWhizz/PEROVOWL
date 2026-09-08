@@ -85,7 +85,6 @@ dist/
 apps/dft_monitor_flutter/build/
 apps/dft_monitor_flutter/.dart_tool/
 apps/dft_monitor_flutter/.flutter-plugins*
-apps/dft_monitor_flutter/test/_alpha.cif
 
 # Copias de seguridad de configuración
 configs/*.bak-*

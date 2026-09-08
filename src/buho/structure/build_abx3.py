@@ -19,7 +19,7 @@ import math
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -257,7 +257,7 @@ class ABX3StructureBuilder:
             "tolerance_t": candidate.tolerance_t,
             "oct_factor": candidate.oct_factor,
             "random_seed": self._seed,
-            "build_date": datetime.utcnow().isoformat() + "Z",
+            "build_date": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
 
         if out_dir is not None and export:

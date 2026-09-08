@@ -139,10 +139,47 @@ def test_el_scissor_soc_se_resuelve_dentro_del_bundle(tmp_path, monkeypatch):
         bs._cache.clear()
 
 
-def test_el_spec_empaqueta_la_tabla_del_scissor():
-    """Sin ella, `bandgap_scissor` devuelve tabla vacía y no corrige nada."""
+#: Ficheros de `config/` que el motor lee en tiempo de ejecución. Cada uno tiene
+#: que viajar dentro del binario: si falta, el módulo que lo lee devuelve tabla
+#: vacía y sigue como si nada.
+TABLAS_DE_CALIBRACION = ("soc_scissor.json", "eg_scale.json")
+
+
+@pytest.mark.parametrize("tabla", TABLAS_DE_CALIBRACION)
+def test_el_spec_empaqueta_las_tablas_de_calibracion(tabla):
+    """Sin ellas, la corrección no se aplica y nadie se entera.
+
+    `eg_scale.json` faltaba. En el código el issue #7 estaba arreglado —la
+    predicción se lleva a escala experimental antes de la ventana PV— pero la
+    tabla no viajaba, así que en **todo binario publicado** el desplazamiento
+    era 0, la ventana [1.1, 1.8] eV se aplicaba sobre el gap calculado (~1 eV
+    menor) y el Tier 1 descartaba el 100 % de los candidatos. Arreglado en el
+    código y sin empaquetar es lo mismo que no arreglado.
+    """
     spec = (ROOT / "packaging" / "dft-monitor-engine.spec").read_text(encoding="utf-8")
-    assert "soc_scissor.json" in spec
+    assert tabla in spec
+
+
+@pytest.mark.parametrize("tabla", TABLAS_DE_CALIBRACION)
+def test_las_tablas_de_calibracion_existen_en_el_repo(tabla):
+    """El spec aborta el empaquetado si falta alguna; que no llegue a eso."""
+    assert (ROOT / "config" / tabla).is_file()
+
+
+def test_las_dos_tablas_salen_de_la_misma_corrida():
+    """La etiqueta de entrenamiento lleva el scissor de SOC y la escala se
+    calibró suponiendo ese mismo SOC. Si cada una viene de una malla k distinta
+    no componen: medido, la cadena real daba 13.6 % de error mientras la tabla
+    anunciaba 4.8 %.
+    """
+    soc = json.loads((ROOT / "config" / "soc_scissor.json").read_text(encoding="utf-8"))
+    esc = json.loads((ROOT / "config" / "eg_scale.json").read_text(encoding="utf-8"))
+    assert soc["generado"] == esc["generado"], (
+        "las tablas no vienen de la misma calibración; regenera las dos con "
+        "scripts/calibrate_eg_scale.py --kpts 2"
+    )
+    # Y a la malla que usa el cribado, no a otra.
+    assert "kpts=2^3" in esc["metodo"] or "[2, 2, 2]" in esc["metodo"]
 
 
 def test_paths_no_importa_nada_del_paquete():

@@ -509,3 +509,60 @@ def test_los_dos_planes_usan_el_mismo_arranque_de_micromamba():
     fuente = inspect.getsource(setup_wizard)
     assert fuente.count("_script_micromamba(mm)") == 2
     assert fuente.count("micro.mamba.pm/api/micromamba") == 0
+
+
+# ── En Linux el runtime tampoco vive dentro del binario ──────────────────────
+
+def test_en_linux_no_se_pregunta_al_interprete_del_binario(monkeypatch):
+    """El motor publicado EXCLUYE gpaw a proposito --- son cientos de MB y el DFT
+    corre como proceso aparte--- asi que `_importable('gpaw')` da siempre False
+    dentro del binario, aunque GPAW este perfectamente instalado en el sistema.
+    En el .deb y el tarball el DFT salia rojo permanente."""
+    import inspect
+
+    fuente = inspect.getsource(setup_wizard._check_dft)
+    rama = fuente.split('if sys.platform != "win32":')[1].split("return")[0]
+    # Solo codigo: el comentario que explica el fallo nombra `_importable`, y
+    # buscarlo en crudo haria fallar la prueba por su propia documentacion.
+    codigo = chr(10).join(l for l in rama.splitlines()
+                          if not l.strip().startswith("#"))
+    assert "_importable" not in codigo, (
+        "la rama de Linux no puede preguntarle a su propio interprete")
+    assert "_gpaw_local" in codigo
+
+
+def test_gpaw_local_prefiere_la_variable_de_entorno(monkeypatch):
+    """Es la misma que lee `dft_runtime` para lanzar el calculo: si Entorno
+    mirara otra cosa, podria decir que si donde el runner dice que no."""
+    llamadas = []
+
+    class _Proc:
+        returncode = 0
+        stdout = "24.6.0 3.29.0"
+        stderr = ""
+
+    def _run(argv, **k):
+        llamadas.append(argv[0])
+        return _Proc()
+
+    monkeypatch.setenv("BUHO_GPAW_PYTHON", "/opt/gpaw/bin/python")
+    monkeypatch.setattr(setup_wizard.subprocess, "run", _run)
+
+    r = setup_wizard._gpaw_local({})
+
+    assert r["python"] == "/opt/gpaw/bin/python"
+    assert r["gpaw"] == "24.6.0"
+    assert llamadas[0] == "/opt/gpaw/bin/python"
+
+
+def test_gpaw_local_devuelve_none_si_ninguno_lo_tiene(monkeypatch):
+    class _Proc:
+        returncode = 1
+        stdout = ""
+        stderr = "No module named gpaw"
+
+    monkeypatch.delenv("BUHO_GPAW_PYTHON", raising=False)
+    monkeypatch.delenv("GPAW_PYTHON", raising=False)
+    monkeypatch.setattr(setup_wizard.subprocess, "run", lambda *a, **k: _Proc())
+
+    assert setup_wizard._gpaw_local({}) is None
