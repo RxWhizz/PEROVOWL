@@ -297,12 +297,16 @@ def test_el_arranque_rapido_autoconfigura_antes_de_rendirse(tmp_path, monkeypatc
     monkeypatch.setattr(setup_wizard, "distros_wsl", lambda: ["Ubuntu"])
     monkeypatch.setattr(setup_service, "_config", lambda: {})
     monkeypatch.setattr(
-        setup_wizard, "detectar_gpaw_wsl",
-        lambda *a, **k: {"python": "/h/envs/g/bin/python", "gpaw": "24.6.0",
-                         "ase": "3.29.0", "prefix": "/h/envs/g",
-                         "mpirun": "/h/envs/g/bin/mpiexec", "distro": "Ubuntu",
-                         "setup_path": "/h/envs/g/lib/python3.12/"
-                                       "site-packages/gpaw_data/setups"})
+        setup_wizard, "sondear_gpaw_wsl",
+        lambda *a, **k: {"wsl": True, "distros": ["Ubuntu"],
+                         "candidatos": ["/h/envs/g/bin/python"],
+                         "probados": [], "motivo": None,
+                         "hallado": {
+                             "python": "/h/envs/g/bin/python", "gpaw": "24.6.0",
+                             "ase": "3.29.0", "prefix": "/h/envs/g",
+                             "mpirun": "/h/envs/g/bin/mpiexec", "distro": "Ubuntu",
+                             "setup_path": "/h/envs/g/lib/python3.12/"
+                                           "site-packages/gpaw_data/setups"}})
 
     r = quickstart.autoconfigurar_dft()
 
@@ -345,9 +349,110 @@ def test_si_no_hay_nada_que_detectar_no_se_configura(tmp_path, monkeypatch):
     from monitor_api.services import quickstart
 
     paths.set_data_root(tmp_path)
-    monkeypatch.setattr(setup_wizard, "detectar_gpaw_wsl", lambda *a, **k: None)
+    monkeypatch.setattr(
+        setup_wizard, "sondear_gpaw_wsl",
+        lambda *a, **k: {"wsl": True, "distros": ["Ubuntu"],
+                         "candidatos": ["/usr/bin/python3"],
+                         "probados": [{"python": "/usr/bin/python3", "gpaw": None,
+                                       "error": "No module named gpaw"}],
+                         "hallado": None,
+                         "motivo": "se probaron 1 interpretes y ninguno importa GPAW"})
 
     r = quickstart.autoconfigurar_dft()
 
     assert r["configurado"] is False
-    assert "no hay ningun GPAW" in r["motivo"]
+    assert "ninguno importa GPAW" in r["motivo"]
+
+
+# ── Decir lo que se vio, no repetir el consejo de otro problema ──────────────
+
+def _finge_dft_ausente(monkeypatch):
+    """La maquina de desarrollo SI tiene GPAW configurado, asi que
+    `setup.status` diria que el runtime esta bien y la entrada ni aparece. Lo
+    que se prueba aqui es que el mensaje cuente lo que vio el sondeo."""
+    monkeypatch.setattr(setup_service, "status", lambda **k: {"capacidades": [
+        {"id": "dft", "titulo": "Runtime DFT (GPAW en WSL)", "ok": False,
+         "requerido": True, "error": "No hay intérprete GPAW configurado.",
+         "remediacion": "Define discovery.wsl.python en config/generator.yaml."},
+    ]})
+
+
+def test_tras_buscar_el_mensaje_deja_de_mandar_a_editar_el_yaml(tmp_path, monkeypatch):
+    """La captura de la otra maquina: la busqueda corrio, no encontro nada, y el
+    mensaje seguia siendo «Define discovery.wsl.python en config/generator.yaml»
+    --- un consejo para el problema contrario, porque ahi lo que falta es
+    instalar 2.5 GB, no editar una linea."""
+    from monitor_api.services import quickstart
+
+    paths.set_data_root(tmp_path)
+    _finge_dft_ausente(monkeypatch)
+    monkeypatch.setattr(
+        setup_wizard, "sondear_gpaw_wsl",
+        lambda *a, **k: {"wsl": True, "distros": ["Ubuntu"],
+                         "candidatos": ["/usr/bin/python3"],
+                         "probados": [], "hallado": None, "motivo": "ninguno"})
+
+    faltan = quickstart._faltantes()
+
+    dft = [f for f in faltan if f["id"] == "dft"]
+    assert dft, "el runtime DFT deberia seguir faltando"
+    assert "discovery.wsl.python" not in (dft[0]["remediacion"] or "")
+    assert "no esta" in dft[0]["error"] or "no está" in dft[0]["error"]
+    assert "Entorno" in dft[0]["remediacion"]
+    # Y el sondeo viaja con el fallo: sin el, «no lo encontre» y «no mire» se
+    # ven igual desde fuera.
+    assert dft[0]["sondeo"]["candidatos"] == ["/usr/bin/python3"]
+
+
+def test_sin_wsl_el_mensaje_lo_dice(tmp_path, monkeypatch):
+    from monitor_api.services import quickstart
+
+    paths.set_data_root(tmp_path)
+    _finge_dft_ausente(monkeypatch)
+    monkeypatch.setattr(
+        setup_wizard, "sondear_gpaw_wsl",
+        lambda *a, **k: {"wsl": False, "candidatos": [], "probados": [],
+                         "hallado": None, "motivo": "no hay wsl.exe"})
+
+    dft = [f for f in quickstart._faltantes() if f["id"] == "dft"][0]
+
+    assert "WSL" in dft["error"]
+    assert "wsl --install" in dft["remediacion"]
+
+
+def test_wsl_sin_ninguna_distro_no_se_confunde_con_wsl_sin_gpaw(tmp_path, monkeypatch):
+    """`wsl.exe` viene de serie en Windows 11 aunque no haya nada dentro. Los
+    dos arreglos no se parecen: `wsl --install -d Ubuntu` frente a bajar el
+    runtime desde Entorno."""
+    from monitor_api.services import quickstart
+
+    paths.set_data_root(tmp_path)
+    _finge_dft_ausente(monkeypatch)
+    monkeypatch.setattr(
+        setup_wizard, "sondear_gpaw_wsl",
+        lambda *a, **k: {"wsl": True, "distros": [], "candidatos": [],
+                         "probados": [], "hallado": None,
+                         "motivo": "hay wsl.exe pero ninguna distro instalada"})
+
+    dft = [f for f in quickstart._faltantes() if f["id"] == "dft"][0]
+
+    assert "wsl --install -d Ubuntu" in dft["remediacion"]
+    assert "distribución de Linux" in dft["error"]
+
+
+def test_el_sondeo_mira_si_hay_distros_antes_de_buscar_interpretes(monkeypatch):
+    """Sin distro, `wsl.exe -- bash` falla y la lista de candidatos sale vacía:
+    indistinguible de «hay Ubuntu pero sin entornos». Por eso se comprueba
+    antes."""
+    monkeypatch.setattr(setup_wizard, "_wsl_disponible", lambda: True)
+    monkeypatch.setattr(setup_wizard, "distros_wsl", lambda: [])
+    llamadas = []
+    monkeypatch.setattr(setup_wizard, "_run_wsl",
+                        lambda *a, **k: llamadas.append(a) or None)
+
+    s = setup_wizard.sondear_gpaw_wsl()
+
+    assert s["hallado"] is None
+    assert s["distros"] == []
+    assert "ninguna distro" in s["motivo"]
+    assert not llamadas, "no hay a quien preguntarle: no se lanza ningun bash"

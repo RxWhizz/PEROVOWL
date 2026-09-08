@@ -1,4 +1,4 @@
-# Monitor DFT 0.7.4
+# Monitor DFT 0.7.5
 
 **El pipeline ya no supone que todo es cúbico.** Genera las fases que una
 perovskita de haluro admite de verdad, deja que compitan en energía y **mide**
@@ -13,16 +13,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.4>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.5>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.7.4-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.4-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.7.4-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.7.4-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.7.5-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.5-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.7.5-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.7.5-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -30,13 +30,13 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.7.4-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.7.5-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.7.4-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.7.4-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.7.5-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.7.5-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
@@ -55,10 +55,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.7.4-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.7.5-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.7.4-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.7.5-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -71,8 +71,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.7.4-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.7.4-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.7.5-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.7.5-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -80,20 +80,99 @@ tar xzf dft-monitor-desktop-0.7.4-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.7.4-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.7.5-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
 Se abre en `http://127.0.0.1:8000`. Con `--host 0.0.0.0` se expone en la red y
 exige un token en `monitor.auth.token`.
 
+## El runtime DFT (GPAW en WSL) a mano
+
+La app instala esto sola desde la pestaña **Entorno**, y desde 0.7.4 lo detecta
+si ya estaba. Esta sección es para cuando prefieres hacerlo tú, o cuando quieres
+saber exactamente qué se va a ejecutar en tu máquina antes de dejar que un botón
+lo haga. Son los mismos comandos que corre el instalador.
+
+Descarga unos **2.5 GB** entre el entorno y los datasets PAW.
+
+### 1. Ubuntu dentro de WSL
+
+`wsl.exe` viene de serie en Windows 11 **aunque no haya ninguna distribución
+instalada**. Si el arranque rápido dice que no hay ninguna, este es el paso que
+falta. En **PowerShell como administrador**:
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+Reinicia. Después abre Ubuntu una vez desde el menú Inicio: la primera vez pide
+crear usuario y contraseña de forma interactiva, y por eso la app no puede
+hacerlo por ti. Comprueba que quedó bien:
+
+```powershell
+wsl -l -v
+```
+
+### 2. GPAW
+
+Ya **no** hace falta administrador. PowerShell normal:
+
+```powershell
+# micromamba (~10 MB); no hace nada si ya está
+wsl -- bash -lc 'test -x $HOME/perovowl-micromamba/bin/micromamba || { mkdir -p $HOME/perovowl-micromamba/bin && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba && mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba && chmod +x $HOME/perovowl-micromamba/bin/micromamba; }'
+
+# el entorno con GPAW 24.6, numpy 1.26 y OpenMPI (~2 GB, tarda)
+wsl -- bash -lc '$HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/perovowl-micromamba -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi'
+
+# datasets PAW: solo se descargan (~500 MB) si conda-forge no los trajo
+wsl -- bash -lc 'test -f $HOME/perovowl-micromamba/envs/gpaw246/lib/python3.12/site-packages/gpaw_data/setups/Cs.PBE.gz || $HOME/perovowl-micromamba/envs/gpaw246/bin/gpaw install-data --register $HOME/perovowl-micromamba/envs/gpaw246/lib/python3.12/site-packages/gpaw_data/setups'
+```
+
+`numpy=1.26` no es un descuido: GPAW aún no admite numpy 2, y por eso el MLFF
+—que sí lo exige— vive en un entorno aparte.
+
+### 3. Comprobar
+
+```powershell
+wsl -- bash -lc '$HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version'
+```
+
+Debe responder `gpaw-24.6.0`. A partir de ahí no tienes que configurar nada:
+abre la app y pulsa **Arrancar protocolo** — encuentra ese entorno sola y escribe
+la configuración.
+
+> **Comillas.** Todos los comandos usan comillas **simples** a propósito.
+> PowerShell 5.1 destroza las comillas dobles al pasárselas a un ejecutable
+> nativo, y `wsl` recibe un script roto. `$HOME` sí funciona dentro de comillas
+> simples: PowerShell no lo toca y lo expande el bash de WSL.
+
+### Si algo falla
+
+Para ver qué encuentra la app sin instalar ni configurar nada, con la app
+abierta. La versión de escritorio abre un puerto distinto cada vez, así que
+primero hay que averiguarlo:
+
+```powershell
+# ojo: $pid no vale como nombre, PowerShell lo tiene reservado y es de solo lectura
+$motor = (Get-Process dft-monitor-engine -ErrorAction Stop).Id
+$puerto = (Get-NetTCPConnection -OwningProcess $motor -State Listen).LocalPort | Select-Object -First 1
+Invoke-RestMethod "http://127.0.0.1:$puerto/api/setup/dft/probe" | ConvertTo-Json -Depth 5
+```
+
+En la versión web/servidor el puerto es el 8000 y basta la última línea.
+
+Dice si hay `wsl.exe`, qué distros ve, qué intérpretes probó y con qué error
+falló cada uno. Con eso se distingue «no lo encontré» de «no miré», que es
+justo lo que antes no se podía saber desde fuera.
+
 ## Verificar descargas
 
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.7.4-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.7.4-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.7.5-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.7.5-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -219,6 +298,25 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.7.5
+
+- **Cuando la búsqueda de GPAW no encontraba nada, el mensaje seguía siendo
+  «Define discovery.wsl.python en config/generator.yaml».** Ese consejo solo
+  vale mientras nadie ha mirado; después de mirar es la receta del problema
+  contrario —mandar a editar una línea de YAML a quien le faltan 2.5 GB de
+  descarga—. Ahora el aviso cuenta lo que se vio, y distingue tres situaciones
+  que antes se veían idénticas:
+  - no hay WSL → `wsl --install`;
+  - hay `wsl.exe` pero **ninguna distribución instalada** —el caso fácil de
+    confundir, porque `wsl.exe` viene de serie en Windows 11 aunque no haya
+    nada dentro— → `wsl --install -d Ubuntu`;
+  - hay Ubuntu pero ningún intérprete con GPAW → instalarlo desde Entorno.
+- **`GET /api/setup/dft/probe`**: el sondeo completo sin instalar ni configurar
+  nada. Existe para que «no lo encontré» y «no miré» dejen de verse igual desde
+  fuera.
+- Las notas traen ahora los **comandos de PowerShell** del camino manual, los
+  mismos que ejecuta el instalador.
 
 ### Corregido en 0.7.4
 

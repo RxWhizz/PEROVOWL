@@ -216,24 +216,42 @@ _CANDIDATOS_GPAW_WSL = (
 )
 
 
-def detectar_gpaw_wsl(distro: str | None = None, *, timeout: int = 120
-                      ) -> dict[str, Any] | None:
-    """Busca en WSL un interprete que ya tenga GPAW, sin instalar nada.
+def sondear_gpaw_wsl(distro: str | None = None, *, timeout: int = 120
+                     ) -> dict[str, Any]:
+    """Mira que hay de GPAW en WSL y **cuenta lo que vio**.
 
     Por que existe
     --------------
     La comprobacion de capacidad decia "Define discovery.wsl.python en
     config/generator.yaml" en cuanto la configuracion no traia la ruta. Pero que
     no este configurado no significa que no este instalado: en una maquina donde
-    GPAW ya vive en WSL, lo unico que faltaba era mirar. Pedirle a alguien que
-    edite un YAML para algo que la maquina puede averiguar sola no tiene defensa.
+    GPAW ya vive en WSL, lo unico que faltaba era mirar.
 
-    Solo LEE: recorre las ubicaciones habituales de entornos y devuelve la
-    primera cuyo Python importe gpaw. Si no encuentra ninguna, devuelve None y
-    entonces si hace falta instalar.
+    Y cuando de verdad no hay nada que encontrar, ese mismo mensaje es un
+    consejo para un problema distinto: mandar a editar un YAML a quien lo que le
+    falta son 2.5 GB de descarga. Por eso esto devuelve el sondeo entero
+    --- si hay wsl.exe, que distros, que interpretes se probaron y con que
+    resultado--- y no solo el hallazgo: sin eso, "no lo encontre" y "no mire" se
+    ven igual desde fuera.
+
+    Solo LEE. Nunca instala: eso se ofrece aparte, no se hace a escondidas.
     """
-    if not _wsl_disponible():
-        return None
+    sondeo: dict[str, Any] = {
+        "wsl": _wsl_disponible(), "distro": distro, "distros": [],
+        "candidatos": [], "probados": [], "hallado": None, "motivo": None,
+    }
+    if not sondeo["wsl"]:
+        sondeo["motivo"] = "no hay wsl.exe en esta maquina"
+        return sondeo
+
+    # `wsl.exe` viene de serie en Windows 11 aunque no haya ninguna distro
+    # instalada. Sin esta comprobacion, "WSL vacio" se confundia con "WSL con
+    # Ubuntu pero sin GPAW", que son dos arreglos completamente distintos:
+    # `wsl --install -d Ubuntu` frente a instalar el runtime desde Entorno.
+    sondeo["distros"] = distros_wsl()
+    if not sondeo["distros"]:
+        sondeo["motivo"] = "hay wsl.exe pero ninguna distro instalada"
+        return sondeo
 
     # OJO: nada de variables de shell aqui. Al pasar el script por
     # `wsl.exe -- bash -c`, `$algo` llega vacio --- incluso entre comillas
@@ -244,8 +262,13 @@ def detectar_gpaw_wsl(distro: str | None = None, *, timeout: int = 120
     listado = _run_wsl(distro, "ls -d " + " ".join(_CANDIDATOS_GPAW_WSL)
                        + " 2>/dev/null; command -v python3", timeout=timeout)
     if listado is None:
-        return None
+        sondeo["motivo"] = "wsl.exe no respondio (se agoto el tiempo o fallo al arrancar)"
+        return sondeo
     candidatos = [c.strip() for c in (listado.stdout or "").splitlines() if c.strip()]
+    sondeo["candidatos"] = candidatos
+    if not candidatos:
+        sondeo["motivo"] = "no hay ningun interprete de Python donde mirar"
+        return sondeo
 
     for python in candidatos:
         proc = _run_wsl(
@@ -254,13 +277,13 @@ def detectar_gpaw_wsl(distro: str | None = None, *, timeout: int = 120
             + shlex.quote("import gpaw,ase;print(gpaw.__version__,ase.__version__)"),
             timeout=timeout,
         )
-        if proc is None or proc.returncode != 0:
-            continue
-        versiones = (proc.stdout or "").split()
-        if not versiones:
+        versiones = (proc.stdout or "").split() if proc is not None else []
+        if proc is None or proc.returncode != 0 or not versiones:
+            fallo = ((proc.stderr or "").strip().splitlines() or [""])[-1] if proc else "sin respuesta"
+            sondeo["probados"].append({"python": python, "gpaw": None, "error": fallo[:200]})
             continue
         prefijo = python.rsplit("/bin/", 1)[0] if "/bin/" in python else None
-        salida: dict[str, Any] = {
+        hallado: dict[str, Any] = {
             "python": python,
             "gpaw": versiones[0],
             "ase": versiones[1] if len(versiones) > 1 else None,
@@ -271,10 +294,21 @@ def detectar_gpaw_wsl(distro: str | None = None, *, timeout: int = 120
         if prefijo:
             # `gpaw-data` de conda-forge deja los setups en site-packages, no en
             # share/gpaw. Comprobado sobre un entorno real.
-            salida["setup_path"] = (
+            hallado["setup_path"] = (
                 f"{prefijo}/lib/python{GPAW_PYTHON}/site-packages/gpaw_data/setups")
-        return salida
-    return None
+        sondeo["probados"].append({"python": python, "gpaw": versiones[0]})
+        sondeo["hallado"] = hallado
+        return sondeo
+
+    sondeo["motivo"] = (
+        f"se probaron {len(candidatos)} interpretes y ninguno importa GPAW")
+    return sondeo
+
+
+def detectar_gpaw_wsl(distro: str | None = None, *, timeout: int = 120
+                      ) -> dict[str, Any] | None:
+    """El GPAW ya instalado en WSL, o None. `sondear_gpaw_wsl` dice por que."""
+    return sondear_gpaw_wsl(distro, timeout=timeout)["hallado"]
 
 
 def _capacidad(nombre: str, titulo: str, ok: bool, *, detalle: Any = None,

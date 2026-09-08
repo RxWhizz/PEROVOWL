@@ -110,19 +110,49 @@ def autoconfigurar_dft() -> dict[str, Any]:
     from . import setup
 
     try:
-        hallado = setup_wizard.detectar_gpaw_wsl()
+        sondeo = setup_wizard.sondear_gpaw_wsl()
     except Exception as exc:  # noqa: BLE001 - detectar no puede tumbar el arranque
         log.warning("no se pudo buscar GPAW en WSL: %s", exc)
         return {"configurado": False, "motivo": f"{type(exc).__name__}: {exc}"}
+    hallado = sondeo.get("hallado")
     if not hallado:
-        return {"configurado": False, "motivo": "no hay ningun GPAW instalado en WSL"}
+        return {"configurado": False, "sondeo": sondeo,
+                "motivo": sondeo.get("motivo") or "no hay ningun GPAW instalado en WSL"}
 
     # Se le pasan las rutas HALLADAS: sintetizar las canonicas dejaria la
     # config apuntando a un entorno que no existe si el GPAW de la maquina vive
     # en otro sitio (miniconda3, mambaforge, /opt/conda...).
     escrito = setup.configurar_wsl_dft(distro=hallado.get("distro"), rutas=hallado)
     return {"configurado": bool(escrito.get("escrito")), "detectado": hallado,
-            "escritura": escrito}
+            "sondeo": sondeo, "escritura": escrito}
+
+
+#: Que decirle a alguien cuando la busqueda no encontro GPAW. El mensaje de la
+#: capacidad ("Define discovery.wsl.python en config/generator.yaml") es correcto
+#: solo mientras nadie haya mirado; despues de mirar es un consejo para otro
+#: problema --- mandar a editar un YAML a quien le faltan 2.5 GB de descarga.
+def _explicar_sondeo(sondeo: dict[str, Any]) -> tuple[str, str]:
+    if not sondeo.get("wsl"):
+        return ("No hay WSL en esta máquina.",
+                "Instala WSL con 'wsl --install' y reinicia; luego instala el "
+                "runtime DFT desde la pestaña Entorno.")
+    if sondeo.get("hallado"):
+        return ("", "")
+    if not sondeo.get("distros"):
+        # `wsl.exe` existe en todo Windows 11 aunque no haya nada dentro.
+        return ("Windows trae wsl.exe, pero no hay ninguna distribución de Linux "
+                "instalada dentro de WSL.",
+                "Abre PowerShell como administrador, ejecuta 'wsl --install -d "
+                "Ubuntu', reinicia, y después instala el runtime DFT desde la "
+                "pestaña Entorno.")
+    candidatos = sondeo.get("candidatos") or []
+    if not candidatos:
+        return ("Hay WSL, pero la distro no respondió o no tiene ningún Python.",
+                "Ábrela una vez (menú Inicio → Ubuntu) para que termine de "
+                "configurarse, y vuelve a intentarlo.")
+    return (f"Busqué GPAW en WSL y no está: probé {len(candidatos)} intérprete(s) "
+            f"y ninguno lo tiene.",
+            "Instálalo desde la pestaña Entorno (~2.5 GB de descarga).")
 
 
 def _faltantes(*, autoconfigurar: bool = True) -> list[dict[str, Any]]:
@@ -134,21 +164,34 @@ def _faltantes(*, autoconfigurar: bool = True) -> list[dict[str, Any]]:
     from . import setup
 
     datos = setup.status(fast=True)
+    sondeo: dict[str, Any] | None = None
     if autoconfigurar and any(
         c.get("id") == "dft" and c.get("requerido") and not c.get("ok")
         for c in (datos.get("capacidades") or [])
     ):
-        if autoconfigurar_dft().get("configurado"):
+        intento = autoconfigurar_dft()
+        if intento.get("configurado"):
             datos = setup.status(fast=True)
+        else:
+            sondeo = intento.get("sondeo")
     faltan = []
     for cap in datos.get("capacidades", []) or []:
         if cap.get("requerido") and not cap.get("ok"):
-            faltan.append({
+            entrada = {
                 "id": cap.get("id"),
                 "titulo": cap.get("titulo"),
                 "error": cap.get("error"),
                 "remediacion": cap.get("remediacion"),
-            })
+            }
+            if cap.get("id") == "dft" and sondeo is not None:
+                # Ya se busco: contar lo que se vio en vez de repetir el consejo
+                # de "define la ruta", que solo vale mientras nadie ha mirado.
+                error, remediacion = _explicar_sondeo(sondeo)
+                if error:
+                    entrada["error"] = error
+                    entrada["remediacion"] = remediacion
+                    entrada["sondeo"] = sondeo
+            faltan.append(entrada)
     return faltan
 
 

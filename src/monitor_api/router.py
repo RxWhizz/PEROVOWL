@@ -1279,6 +1279,19 @@ async def setup_status(
     return status(fast=fast)
 
 
+@router.get("/api/setup/dft/probe")
+async def setup_dft_probe() -> dict:
+    """Que hay de GPAW en WSL, sin instalar ni configurar nada.
+
+    Existe para que "no lo encontre" y "no mire" dejen de verse igual desde
+    fuera: devuelve si hay wsl.exe, que interpretes se probaron y con que error
+    fallo cada uno.
+    """
+    from buho.setup_wizard import sondear_gpaw_wsl
+
+    return sondear_gpaw_wsl()
+
+
 @router.post("/api/setup/plan")
 async def setup_plan(body: SetupInstallRequest) -> dict:
     """Los comandos que se ejecutarían, sin ejecutar ninguno."""
