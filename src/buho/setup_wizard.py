@@ -202,6 +202,81 @@ def _run_wsl(distro: str | None, script: str, *, timeout: int = 60) -> subproces
         return None
 
 
+#: Donde suele vivir un Python con GPAW dentro de WSL. Se prueban en orden y
+#: gana el primero que IMPORTE gpaw de verdad --- existir el fichero no basta,
+#: un entorno a medio crear tiene el binario y no el paquete.
+_CANDIDATOS_GPAW_WSL = (
+    "$HOME/perovowl-micromamba/envs/*/bin/python",
+    "$HOME/micromamba/envs/*/bin/python",
+    "$HOME/miniconda3/envs/*/bin/python",
+    "$HOME/anaconda3/envs/*/bin/python",
+    "$HOME/mambaforge/envs/*/bin/python",
+    "$HOME/miniforge3/envs/*/bin/python",
+    "/opt/conda/envs/*/bin/python",
+)
+
+
+def detectar_gpaw_wsl(distro: str | None = None, *, timeout: int = 120
+                      ) -> dict[str, Any] | None:
+    """Busca en WSL un interprete que ya tenga GPAW, sin instalar nada.
+
+    Por que existe
+    --------------
+    La comprobacion de capacidad decia "Define discovery.wsl.python en
+    config/generator.yaml" en cuanto la configuracion no traia la ruta. Pero que
+    no este configurado no significa que no este instalado: en una maquina donde
+    GPAW ya vive en WSL, lo unico que faltaba era mirar. Pedirle a alguien que
+    edite un YAML para algo que la maquina puede averiguar sola no tiene defensa.
+
+    Solo LEE: recorre las ubicaciones habituales de entornos y devuelve la
+    primera cuyo Python importe gpaw. Si no encuentra ninguna, devuelve None y
+    entonces si hace falta instalar.
+    """
+    if not _wsl_disponible():
+        return None
+
+    # OJO: nada de variables de shell aqui. Al pasar el script por
+    # `wsl.exe -- bash -c`, `$algo` llega vacio --- incluso entre comillas
+    # simples--- mientras que las del entorno como $HOME si sobreviven. Un bucle
+    # `for p in ...; do ... "$p" ...; done` itera bien pero con la variable
+    # vacia, y la deteccion devolvia None en una maquina donde GPAW SI estaba.
+    # Por eso se listan los candidatos en una llamada y se prueban desde Python.
+    listado = _run_wsl(distro, "ls -d " + " ".join(_CANDIDATOS_GPAW_WSL)
+                       + " 2>/dev/null; command -v python3", timeout=timeout)
+    if listado is None:
+        return None
+    candidatos = [c.strip() for c in (listado.stdout or "").splitlines() if c.strip()]
+
+    for python in candidatos:
+        proc = _run_wsl(
+            distro,
+            shlex.quote(python) + " -c "
+            + shlex.quote("import gpaw,ase;print(gpaw.__version__,ase.__version__)"),
+            timeout=timeout,
+        )
+        if proc is None or proc.returncode != 0:
+            continue
+        versiones = (proc.stdout or "").split()
+        if not versiones:
+            continue
+        prefijo = python.rsplit("/bin/", 1)[0] if "/bin/" in python else None
+        salida: dict[str, Any] = {
+            "python": python,
+            "gpaw": versiones[0],
+            "ase": versiones[1] if len(versiones) > 1 else None,
+            "prefix": prefijo,
+            "mpirun": f"{prefijo}/bin/mpiexec" if prefijo else None,
+            "distro": distro,
+        }
+        if prefijo:
+            # `gpaw-data` de conda-forge deja los setups en site-packages, no en
+            # share/gpaw. Comprobado sobre un entorno real.
+            salida["setup_path"] = (
+                f"{prefijo}/lib/python{GPAW_PYTHON}/site-packages/gpaw_data/setups")
+        return salida
+    return None
+
+
 def _capacidad(nombre: str, titulo: str, ok: bool, *, detalle: Any = None,
                error: str | None = None, remediacion: str = "",
                comando: str | None = None, requerido: bool = True) -> dict[str, Any]:

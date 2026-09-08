@@ -1,4 +1,4 @@
-# Monitor DFT 0.7.3
+# Monitor DFT 0.7.4
 
 **El pipeline ya no supone que todo es cúbico.** Genera las fases que una
 perovskita de haluro admite de verdad, deja que compitan en energía y **mide**
@@ -13,16 +13,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.3>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.4>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.7.3-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.3-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.7.3-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.7.3-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.7.4-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.4-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.7.4-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.7.4-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -30,13 +30,13 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.7.3-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.7.4-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.7.3-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.7.3-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.7.4-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.7.4-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
@@ -55,10 +55,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.7.3-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.7.4-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.7.3-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.7.4-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -71,8 +71,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.7.3-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.7.3-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.7.4-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.7.4-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -80,7 +80,7 @@ tar xzf dft-monitor-desktop-0.7.3-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.7.3-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.7.4-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
@@ -92,8 +92,8 @@ exige un token en `monitor.auth.token`.
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.7.3-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.7.3-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.7.4-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.7.4-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -219,6 +219,17 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.7.4
+
+- **«Define discovery.wsl.python en config/generator.yaml» aunque GPAW estuviera
+  instalado.** Que no esté configurado no significa que no esté: en una máquina
+  con GPAW ya en WSL, lo único que faltaba era mirar. Ahora el arranque rápido
+  busca los entornos habituales —micromamba, conda, mambaforge, el python3 del
+  sistema— se queda con el primero que **importe GPAW de verdad** y escribe la
+  configuración solo. Sin preguntar, porque no cuesta nada.
+- Si de verdad no hay GPAW instalado sigue mandando a **Entorno**: son ~2.5 GB
+  de descarga y eso no se hace desde un botón que dice «arrancar protocolo».
 
 ### Corregido en 0.7.3
 

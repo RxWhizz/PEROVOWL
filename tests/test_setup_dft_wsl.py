@@ -222,3 +222,132 @@ def test_los_datasets_no_se_descargan_si_ya_estan(plan_listo):
     assert script.startswith("test -f "), "primero se comprueba"
     assert "Cs.PBE.gz" in script, "se mira un elemento concreto, no solo el directorio"
     assert "||" in script and "install-data" in script, "y solo si falta se descarga"
+
+
+# ── Detección de un GPAW ya instalado ────────────────────────────────────────
+
+def test_no_se_usan_variables_de_shell_en_la_deteccion():
+    """Al pasar un script por `wsl.exe -- bash -c`, las variables propias del
+    script llegan **vacías** —incluso entre comillas simples— mientras que las
+    del entorno como `$HOME` sí sobreviven.
+
+    Un `for p in ...; do ... "$p" ...; done` itera bien pero con la variable
+    vacía, y la detección devolvía «no encontrado» en una máquina donde GPAW sí
+    estaba. Por eso la iteración se hace en Python.
+    """
+    import inspect
+
+    fuente = inspect.getsource(setup_wizard.detectar_gpaw_wsl)
+    # `$HOME` sí puede aparecer: viene del entorno de WSL, no del script.
+    sospechosas = [l for l in fuente.splitlines()
+                   if "$" in l and "$HOME" not in l and not l.strip().startswith("#")]
+    assert not sospechosas, (
+        f"variables de shell en el script: {sospechosas}")
+
+
+def test_sin_wsl_no_se_detecta_nada(monkeypatch):
+    monkeypatch.setattr(setup_wizard, "_wsl_disponible", lambda: False)
+    assert setup_wizard.detectar_gpaw_wsl() is None
+
+
+def test_se_elige_el_entorno_que_importa_gpaw(monkeypatch):
+    """Existir el binario no basta: un entorno a medio crear tiene el ejecutable
+    y no el paquete. Aquí hay dos y solo uno sirve."""
+    monkeypatch.setattr(setup_wizard, "_wsl_disponible", lambda: True)
+
+    class _Proc:
+        def __init__(self, rc, out=""):
+            self.returncode, self.stdout, self.stderr = rc, out, ""
+
+    def _falso(distro, script, *, timeout=60):
+        if script.startswith("ls -d"):
+            return _Proc(0, "/h/envs/sin_gpaw/bin/python\n/h/envs/con_gpaw/bin/python\n")
+        if "sin_gpaw" in script:
+            return _Proc(1)
+        return _Proc(0, "24.6.0 3.29.0\n")
+
+    monkeypatch.setattr(setup_wizard, "_run_wsl", _falso)
+    r = setup_wizard.detectar_gpaw_wsl()
+
+    assert r is not None
+    assert r["python"] == "/h/envs/con_gpaw/bin/python"
+    assert r["gpaw"] == "24.6.0"
+    assert r["setup_path"].endswith("/site-packages/gpaw_data/setups")
+
+
+def test_si_no_hay_ninguno_se_dice_en_vez_de_inventar(monkeypatch):
+    """Sin GPAW instalado hay que instalarlo, y eso son ~2.5 GB: no se hace a
+    escondidas desde el arranque rápido."""
+    monkeypatch.setattr(setup_wizard, "_wsl_disponible", lambda: True)
+
+    class _Proc:
+        def __init__(self, rc, out=""):
+            self.returncode, self.stdout, self.stderr = rc, out, ""
+
+    monkeypatch.setattr(setup_wizard, "_run_wsl",
+                        lambda d, s, **k: _Proc(0, "") if s.startswith("ls -d") else _Proc(1))
+    assert setup_wizard.detectar_gpaw_wsl() is None
+
+
+def test_el_arranque_rapido_autoconfigura_antes_de_rendirse(tmp_path, monkeypatch):
+    """El caso de la captura: WSL está, GPAW está, y solo faltaba la ruta."""
+    from monitor_api.services import quickstart
+
+    paths.set_data_root(tmp_path)
+    monkeypatch.setattr(setup_wizard, "distros_wsl", lambda: ["Ubuntu"])
+    monkeypatch.setattr(setup_service, "_config", lambda: {})
+    monkeypatch.setattr(
+        setup_wizard, "detectar_gpaw_wsl",
+        lambda *a, **k: {"python": "/h/envs/g/bin/python", "gpaw": "24.6.0",
+                         "ase": "3.29.0", "prefix": "/h/envs/g",
+                         "mpirun": "/h/envs/g/bin/mpiexec", "distro": "Ubuntu",
+                         "setup_path": "/h/envs/g/lib/python3.12/"
+                                       "site-packages/gpaw_data/setups"})
+
+    r = quickstart.autoconfigurar_dft()
+
+    assert r["configurado"] is True
+    assert r["detectado"]["gpaw"] == "24.6.0"
+
+    # Y lo que se escribe es la ruta ENCONTRADA. Sintetizar aqui la canonica
+    # (`$HOME/perovowl-micromamba/envs/gpaw246/...`) dejaria la config apuntando
+    # a un directorio inexistente en cuanto el GPAW de la maquina viva en otro
+    # sitio: peor que no configurar nada, porque ya no se nota que falta.
+    wsl = yaml.safe_load(
+        (tmp_path / "config" / "generator.yaml").read_text(encoding="utf-8")
+    )["discovery"]["wsl"]
+    assert wsl["python"] == "/h/envs/g/bin/python"
+    assert wsl["setup_path"] == ("/h/envs/g/lib/python3.12/"
+                                 "site-packages/gpaw_data/setups")
+    assert wsl["env_name"] == "g"
+
+
+def test_tras_instalar_se_sigue_escribiendo_la_ruta_del_instalador(tmp_path, monkeypatch):
+    """Sin `rutas` la funcion deduce donde deja el entorno el instalador. Es lo
+    correcto justo despues de instalar, y es el otro camino: que uno gane no
+    puede romper el otro."""
+    paths.set_data_root(tmp_path)
+    monkeypatch.setattr(setup_wizard, "distros_wsl", lambda: ["Ubuntu"])
+    monkeypatch.setattr(setup_service, "_config", lambda: {})
+
+    r = setup_service.configurar_wsl_dft()
+
+    assert r["escrito"] is True
+    wsl = yaml.safe_load(
+        (tmp_path / "config" / "generator.yaml").read_text(encoding="utf-8")
+    )["discovery"]["wsl"]
+    assert wsl["env_name"] == setup_wizard.GPAW_ENV
+    assert wsl["python"].endswith(f"/envs/{setup_wizard.GPAW_ENV}/bin/python")
+    assert wsl["micromamba"].endswith("/bin/micromamba")
+
+
+def test_si_no_hay_nada_que_detectar_no_se_configura(tmp_path, monkeypatch):
+    from monitor_api.services import quickstart
+
+    paths.set_data_root(tmp_path)
+    monkeypatch.setattr(setup_wizard, "detectar_gpaw_wsl", lambda *a, **k: None)
+
+    r = quickstart.autoconfigurar_dft()
+
+    assert r["configurado"] is False
+    assert "no hay ningun GPAW" in r["motivo"]

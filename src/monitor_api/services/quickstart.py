@@ -93,11 +93,53 @@ def _aplicar_en_caliente(poller: Any, reparto: dict[str, Any]) -> bool:
     return True
 
 
-def _faltantes() -> list[dict[str, Any]]:
-    """Capacidades requeridas que no estan listas."""
+def autoconfigurar_dft() -> dict[str, Any]:
+    """Busca un GPAW ya instalado en WSL y apunta la configuracion hacia el.
+
+    Que no este configurado no significa que no este instalado. La comprobacion
+    de capacidad decia "Define discovery.wsl.python en config/generator.yaml" en
+    cuanto faltaba la ruta, y en una maquina donde GPAW ya vivia en WSL lo unico
+    que hacia falta era mirar. Pedirle a alguien que edite un YAML para algo que
+    la maquina puede averiguar sola no tiene defensa.
+
+    Solo LEE: si no encuentra nada, no instala --- eso son ~2.5 GB y se ofrece
+    aparte, no se hace a escondidas.
+    """
+    from buho import setup_wizard
+
+    from . import setup
+
+    try:
+        hallado = setup_wizard.detectar_gpaw_wsl()
+    except Exception as exc:  # noqa: BLE001 - detectar no puede tumbar el arranque
+        log.warning("no se pudo buscar GPAW en WSL: %s", exc)
+        return {"configurado": False, "motivo": f"{type(exc).__name__}: {exc}"}
+    if not hallado:
+        return {"configurado": False, "motivo": "no hay ningun GPAW instalado en WSL"}
+
+    # Se le pasan las rutas HALLADAS: sintetizar las canonicas dejaria la
+    # config apuntando a un entorno que no existe si el GPAW de la maquina vive
+    # en otro sitio (miniconda3, mambaforge, /opt/conda...).
+    escrito = setup.configurar_wsl_dft(distro=hallado.get("distro"), rutas=hallado)
+    return {"configurado": bool(escrito.get("escrito")), "detectado": hallado,
+            "escritura": escrito}
+
+
+def _faltantes(*, autoconfigurar: bool = True) -> list[dict[str, Any]]:
+    """Capacidades requeridas que no estan listas.
+
+    Antes de dar por perdido el runtime DFT se intenta encontrarlo: es gratis y
+    resuelve el caso comun de "instalado pero sin configurar".
+    """
     from . import setup
 
     datos = setup.status(fast=True)
+    if autoconfigurar and any(
+        c.get("id") == "dft" and c.get("requerido") and not c.get("ok")
+        for c in (datos.get("capacidades") or [])
+    ):
+        if autoconfigurar_dft().get("configurado"):
+            datos = setup.status(fast=True)
     faltan = []
     for cap in datos.get("capacidades", []) or []:
         if cap.get("requerido") and not cap.get("ok"):

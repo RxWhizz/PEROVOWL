@@ -177,12 +177,20 @@ def _raiz_datos_en_wsl() -> str | None:
 
 
 def configurar_wsl_dft(*, distro: str | None = None,
-                       env_name: str | None = None) -> dict[str, Any]:
+                       env_name: str | None = None,
+                       rutas: dict[str, Any] | None = None) -> dict[str, Any]:
     """Escribe `discovery.wsl` en el generator.yaml del usuario.
 
     Se llama al terminar bien la instalacion del runtime DFT. Sin esto el
     entorno queda creado pero nadie sabe donde esta: `setup_wizard` seguiria
     diciendo «Define discovery.wsl.python».
+
+    `rutas` son las de un GPAW **encontrado**, y entonces se escriben tal cual.
+    Sin ellas se deducen del sitio donde este instalador deja el entorno, que es
+    lo correcto justo despues de instalar y lo incorrecto para cualquier otro
+    GPAW: la deteccion puede dar con uno en `miniconda3` o `mambaforge`, y
+    sintetizar aqui la ruta canonica dejaria la config apuntando a un directorio
+    que no existe --- peor que no configurar nada, porque ya no se nota.
     """
     from buho import setup_wizard
 
@@ -190,8 +198,14 @@ def configurar_wsl_dft(*, distro: str | None = None,
     if not distros:
         return {"escrito": False, "motivo": "no hay distros WSL"}
     distro = distro or distros[0]
-    env = env_name or setup_wizard.GPAW_ENV
-    rutas = setup_wizard._rutas_gpaw(_config(), env)
+    if rutas:
+        # El nombre del entorno sale de donde esta, no del que usaria el
+        # instalador: si el GPAW hallado vive en `envs/quimica`, llamarlo
+        # `gpaw246` en la config solo confunde a quien la lea.
+        env = env_name or (rutas.get("prefix") or "").rsplit("/", 1)[-1]             or setup_wizard.GPAW_ENV
+    else:
+        env = env_name or setup_wizard.GPAW_ENV
+        rutas = setup_wizard._rutas_gpaw(_config(), env)
 
     destino = paths.resolve_data("config/generator.yaml")
     cfg: dict[str, Any] = {}
@@ -221,12 +235,14 @@ def configurar_wsl_dft(*, distro: str | None = None,
     wsl.update({
         "distro": distro,
         "env_name": env,
-        "micromamba": rutas["micromamba"],
         "python": rutas["python"],
-        "mpirun": rutas["mpirun"],
-        "setup_path": rutas["setups"],
+        "mpirun": rutas.get("mpirun"),
+        # `setups` lo llama el instalador; `setup_path`, la deteccion.
+        "setup_path": rutas.get("setups") or rutas.get("setup_path"),
         "driver_python": "python3",
     })
+    if rutas.get("micromamba"):
+        wsl["micromamba"] = rutas["micromamba"]
     if proyecto:
         wsl["project_root"] = proyecto
 
