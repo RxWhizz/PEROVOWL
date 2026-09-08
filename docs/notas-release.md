@@ -76,8 +76,20 @@ contraseña**, es interactivo y por eso no puede lanzarlo la app. `wsl -l -v`
 debe listar `Ubuntu`.
 
 **3 · GPAW** — la app lo instala sola: abre **Arrancar protocolo** y, si falta,
-lo descarga y arranca el protocolo al terminar. Si prefieres hacerlo a mano,
-PowerShell normal:
+lo descarga y arranca el protocolo al terminar.
+
+Si prefieres hacerlo a mano, hay **dos sitios distintos** donde puedes estar, y
+los comandos no son los mismos:
+
+| Dónde estás | Cómo se reconoce el prompt |
+|---|---|
+| **PowerShell** (Windows) | `PS C:\Users\tu-nombre>` |
+| **Dentro de Ubuntu** (WSL) | `tu-nombre@DESKTOP-XXXX:~$` |
+
+Dentro de Ubuntu **no existe el comando `wsl`** —ese es de Windows—, así que si
+pegas ahí los de PowerShell obtienes `wsl: command not found`.
+
+**Desde PowerShell:**
 
 ```powershell
 # 1/3 · micromamba (~10 MB)
@@ -90,8 +102,25 @@ wsl -- bash -lc '$HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/per
 wsl -- bash -lc '$HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version'
 ```
 
-Cuando el tercero responda `gpaw-24.6.0`, abre la app y pulsa **Arrancar
-protocolo**: encuentra ese entorno solo, sin que configures nada.
+**Ya dentro de Ubuntu**, si acabas de instalarla y tienes el prompt delante, lo
+mismo pero sin el envoltorio:
+
+```bash
+# 1/3 · micromamba
+mkdir -p $HOME/perovowl-micromamba/bin
+curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba
+mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba
+chmod +x $HOME/perovowl-micromamba/bin/micromamba
+
+# 2/3 · GPAW (~2 GB, tarda)
+$HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/perovowl-micromamba -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi
+
+# 3/3 · comprobar
+$HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version
+```
+
+Cuando responda `gpaw-24.6.0`, abre la app y pulsa **Arrancar protocolo**:
+encuentra ese entorno solo, sin que configures nada.
 
 > **Comillas simples a propósito.** PowerShell 5.1 destroza las comillas dobles
 > al pasárselas a un ejecutable nativo y `wsl` recibe un script roto. `$HOME` sí

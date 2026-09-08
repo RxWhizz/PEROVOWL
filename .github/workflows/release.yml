@@ -262,7 +262,14 @@ jobs:
             sin que haya que volver a pulsarlo. Si ya está —aunque sea de otra
             instalación tuya— lo detecta y se configura sin preguntar.
 
-            Para hacerlo a mano, PowerShell normal:
+            Para hacerlo a mano hay **dos sitios distintos** donde puedes estar, y
+            los comandos no son los mismos: en **PowerShell** el prompt es
+            `PS C:\Users\tu-nombre>`; **dentro de Ubuntu** es
+            `tu-nombre@DESKTOP-XXXX:~$`. Dentro de Ubuntu no existe el comando
+            `wsl` —ese es de Windows—, así que pegar ahí los de PowerShell da
+            `wsl: command not found`.
+
+            Desde **PowerShell**:
 
             ```powershell
             wsl -- bash -lc 'test -x $HOME/perovowl-micromamba/bin/micromamba || { mkdir -p $HOME/perovowl-micromamba/bin && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba && mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba && chmod +x $HOME/perovowl-micromamba/bin/micromamba; }'
@@ -270,9 +277,21 @@ jobs:
             wsl -- bash -lc '$HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version'
             ```
 
-            El último debe responder `gpaw-24.6.0`. Comillas **simples** a
-            propósito: PowerShell 5.1 destroza las dobles al pasarlas a un
-            ejecutable nativo.
+            Comillas **simples** a propósito: PowerShell 5.1 destroza las dobles
+            al pasarlas a un ejecutable nativo.
+
+            Ya **dentro de Ubuntu**, lo mismo sin el envoltorio:
+
+            ```bash
+            mkdir -p $HOME/perovowl-micromamba/bin
+            curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba
+            mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba
+            chmod +x $HOME/perovowl-micromamba/bin/micromamba
+            $HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/perovowl-micromamba -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi
+            $HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version
+            ```
+
+            El último debe responder `gpaw-24.6.0`.
 
             Cada cálculo DFT reserva ~2 GB de RAM. El arranque rápido mide la máquina
             y abre solo los trabajos que caben.
