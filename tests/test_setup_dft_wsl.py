@@ -482,3 +482,30 @@ def test_los_nombres_de_distro_normales_siguen_pasando(monkeypatch):
     monkeypatch.setattr(setup_wizard.subprocess, "run", lambda *a, **k: _Proc())
 
     assert setup_wizard.distros_wsl() == ["Ubuntu", "Debian", "kali-linux", "Ubuntu-22.04"]
+
+
+# ── Una Ubuntu recien instalada no trae bzip2 ────────────────────────────────
+
+def test_micromamba_se_baja_sin_tar_ni_bzip2():
+    """La via oficial (`curl ... | tar -xvj`) descomprime bzip2, y una Ubuntu
+    recien instalada NO lo trae. En una maquina real el paso murio con
+    «tar (grandchild): bzip2: Cannot exec: No such file or directory» y todo lo
+    demas cayo detras por no existir micromamba."""
+    script = setup_wizard._script_micromamba("/h/bin/micromamba")
+
+    assert "tar" not in script, "sin tar: no se puede contar con bzip2"
+    assert "bzip2" not in script
+    assert setup_wizard.URL_MICROMAMBA in script
+    assert "chmod +x" in script
+    # Idempotente: no se vuelve a bajar si ya esta.
+    assert script.startswith("test -x ")
+
+
+def test_los_dos_planes_usan_el_mismo_arranque_de_micromamba():
+    """Estaba copiado en el plan de DFT y en el de MLFF, y solo se arreglo uno
+    la primera vez. Una sola fuente para que no puedan divergir."""
+    import inspect
+
+    fuente = inspect.getsource(setup_wizard)
+    assert fuente.count("_script_micromamba(mm)") == 2
+    assert fuente.count("micro.mamba.pm/api/micromamba") == 0

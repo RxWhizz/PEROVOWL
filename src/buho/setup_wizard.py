@@ -582,12 +582,7 @@ def plan_mlff(config: dict[str, Any] | None = None, *,
     # si está, el `test -x` corta y no se toca nada.
     steps.append(wsl_step(
         "asegurar-micromamba",
-        f"test -x {_sh(mm)} || {{ "
-        f"mkdir -p {_sh(os.path.dirname(mm))} && "
-        f"curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest "
-        f"| tar -xvj -C /tmp bin/micromamba && "
-        f"mv /tmp/bin/micromamba {_sh(mm)} && "
-        f"chmod +x {_sh(mm)}; }}",
+        _script_micromamba(mm),
         descripcion="Comprueba micromamba y lo descarga solo si falta.",
         timeout=900,
     ))
@@ -675,6 +670,27 @@ def distros_wsl() -> list[str]:
     # distro no lleva espacios --- se puede forzar uno con `wsl --import`, pero
     # tragarse una frase de error es peor que rechazar un nombre raro.
     return [linea for linea in lineas if not any(c.isspace() for c in linea)]
+
+
+#: Binario suelto de micromamba. La via oficial
+#: (`curl ... | tar -xvj`) descomprime bzip2, y **una Ubuntu recien instalada no
+#: trae bzip2**: en una maquina real el paso moria con
+#: "tar (grandchild): bzip2: Cannot exec: No such file or directory" y todo lo
+#: demas caia detras por no existir micromamba. Este asset es un ELF ya
+#: descomprimido, asi que no hace falta ni tar ni bzip2 ni sudo para instalar
+#: nada antes.
+URL_MICROMAMBA = ("https://github.com/mamba-org/micromamba-releases"
+                  "/releases/latest/download/micromamba-linux-64")
+
+
+def _script_micromamba(destino: str) -> str:
+    """Deja micromamba en `destino` si no estaba. Sin tar y sin bzip2."""
+    return (
+        f"test -x {_sh(destino)} || {{ "
+        f"mkdir -p {_sh(os.path.dirname(destino))} && "
+        f"curl -Ls -o {_sh(destino)} {shlex.quote(URL_MICROMAMBA)} && "
+        f"chmod +x {_sh(destino)}; }}"
+    )
 
 
 def _rutas_gpaw(config: dict[str, Any] | None, env_name: str) -> dict[str, str]:
@@ -768,11 +784,7 @@ def plan_dft(config: dict[str, Any] | None = None, *,
     steps: list[Step] = []
     steps.append(wsl_step(
         "asegurar-micromamba",
-        f"test -x {_sh(mm)} || {{ "
-        f"mkdir -p {_sh(os.path.dirname(mm))} && "
-        f"curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest "
-        f"| tar -xvj -C /tmp bin/micromamba && "
-        f"mv /tmp/bin/micromamba {_sh(mm)} && chmod +x {_sh(mm)}; }}",
+        _script_micromamba(mm),
         descripcion="Comprueba micromamba y lo descarga solo si falta.",
         timeout=900,
     ))

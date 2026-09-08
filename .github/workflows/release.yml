@@ -272,7 +272,7 @@ jobs:
             Desde **PowerShell**:
 
             ```powershell
-            wsl -- bash -lc 'test -x $HOME/perovowl-micromamba/bin/micromamba || { mkdir -p $HOME/perovowl-micromamba/bin && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba && mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba && chmod +x $HOME/perovowl-micromamba/bin/micromamba; }'
+            wsl -- bash -lc 'mkdir -p $HOME/perovowl-micromamba/bin && curl -Ls -o $HOME/perovowl-micromamba/bin/micromamba https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-linux-64 && chmod +x $HOME/perovowl-micromamba/bin/micromamba'
             wsl -- bash -lc '$HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/perovowl-micromamba -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi'
             wsl -- bash -lc '$HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version'
             ```
@@ -284,8 +284,7 @@ jobs:
 
             ```bash
             mkdir -p $HOME/perovowl-micromamba/bin
-            curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba
-            mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba
+            curl -Ls -o $HOME/perovowl-micromamba/bin/micromamba https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-linux-64
             chmod +x $HOME/perovowl-micromamba/bin/micromamba
             $HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/perovowl-micromamba -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi
             $HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version

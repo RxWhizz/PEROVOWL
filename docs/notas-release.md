@@ -1,4 +1,4 @@
-# Monitor DFT 0.7.6
+# Monitor DFT 0.7.7
 
 **El pipeline ya no supone que todo es cúbico.** Genera las fases que una
 perovskita de haluro admite de verdad, deja que compitan en energía y **mide**
@@ -13,16 +13,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.6>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.7>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.7.6-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.6-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.7.6-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.7.6-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.7.7-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.7-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.7.7-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.7.7-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -30,13 +30,13 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.7.6-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.7.7-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.7.6-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.7.6-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.7.7-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.7.7-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
@@ -93,7 +93,7 @@ pegas ahí los de PowerShell obtienes `wsl: command not found`.
 
 ```powershell
 # 1/3 · micromamba (~10 MB)
-wsl -- bash -lc 'test -x $HOME/perovowl-micromamba/bin/micromamba || { mkdir -p $HOME/perovowl-micromamba/bin && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba && mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba && chmod +x $HOME/perovowl-micromamba/bin/micromamba; }'
+wsl -- bash -lc 'mkdir -p $HOME/perovowl-micromamba/bin && curl -Ls -o $HOME/perovowl-micromamba/bin/micromamba https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-linux-64 && chmod +x $HOME/perovowl-micromamba/bin/micromamba'
 
 # 2/3 · GPAW 24.6 + numpy 1.26 + OpenMPI (~2 GB, tarda)
 wsl -- bash -lc '$HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/perovowl-micromamba -n gpaw246 -c conda-forge python=3.12 numpy=1.26 gpaw=24.6 ase openmpi'
@@ -102,14 +102,19 @@ wsl -- bash -lc '$HOME/perovowl-micromamba/bin/micromamba create -y -r $HOME/per
 wsl -- bash -lc '$HOME/perovowl-micromamba/envs/gpaw246/bin/python -m gpaw --version'
 ```
 
+> **Por qué el binario suelto y no `curl | tar -xvj`.** La vía oficial
+> descomprime bzip2, y una **Ubuntu recién instalada no trae bzip2**: el paso
+> muere con `tar (grandchild): bzip2: Cannot exec: No such file or directory` y
+> todo lo demás cae detrás por no existir micromamba. Este asset ya viene
+> descomprimido.
+
 **Ya dentro de Ubuntu**, si acabas de instalarla y tienes el prompt delante, lo
 mismo pero sin el envoltorio:
 
 ```bash
 # 1/3 · micromamba
 mkdir -p $HOME/perovowl-micromamba/bin
-curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /tmp bin/micromamba
-mv /tmp/bin/micromamba $HOME/perovowl-micromamba/bin/micromamba
+curl -Ls -o $HOME/perovowl-micromamba/bin/micromamba https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-linux-64
 chmod +x $HOME/perovowl-micromamba/bin/micromamba
 
 # 2/3 · GPAW (~2 GB, tarda)
@@ -143,10 +148,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.7.6-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.7.7-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.7.6-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.7.7-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -159,8 +164,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.7.6-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.7.6-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.7.7-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.7.7-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -168,7 +173,7 @@ tar xzf dft-monitor-desktop-0.7.6-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.7.6-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.7.7-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
@@ -246,8 +251,8 @@ falló cada uno. Con eso se distingue «no lo encontré» de «no miré».
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.7.6-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.7.6-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.7.7-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.7.7-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -373,6 +378,25 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.7.7
+
+- **La instalación moría en el primer paso sobre una Ubuntu recién puesta.**
+  micromamba se bajaba por la vía oficial, `curl … | tar -xvj`, que descomprime
+  bzip2 — y **una Ubuntu recién instalada no trae bzip2**. El paso reventaba con
+  `tar (grandchild): bzip2: Cannot exec: No such file or directory` y todo lo
+  demás caía detrás por no existir micromamba. Ahora se descarga el binario
+  suelto, que ya viene descomprimido: ni tar, ni bzip2, ni `sudo` para instalar
+  nada antes. Afectaba **al instalador de la app**, no solo a los comandos
+  manuales.
+- El arranque de micromamba estaba **copiado** en el plan de DFT y en el de
+  MLFF. Ahora sale de una sola función, y hay una prueba que falla si vuelven a
+  divergir o si reaparece `tar` en el script.
+- Las notas dicen **desde dónde** se ejecuta cada comando. Iban envueltos en
+  `wsl -- bash -lc '…'` sin decir que eso es de PowerShell; pegados en el prompt
+  de Ubuntu —que es justo donde acabas tras instalar la distro, porque se abre
+  sola para crear el usuario— dan `wsl: command not found`. Ahora van las dos
+  versiones y cómo distinguir cada prompt.
 
 ### Corregido en 0.7.6
 

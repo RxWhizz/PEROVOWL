@@ -703,7 +703,10 @@ def test_plan_asegura_micromamba_antes_de_crear_el_entorno():
 
     assert plan.steps[0].name == "asegurar-micromamba"
     cmd = plan.steps[0].shell()
-    assert "micro.mamba.pm" in cmd
+    assert setup_wizard.URL_MICROMAMBA in cmd
+    # El binario suelto, no `curl | tar -xvj`: eso descomprime bzip2 y una
+    # Ubuntu recien instalada no lo trae.
+    assert "tar" not in cmd
     # Idempotente: si ya esta, el test -x corta y no se descarga nada.
     assert "test -x" in cmd
     # Y la ruta es absoluta, no relativa al directorio actual.
