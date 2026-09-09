@@ -227,7 +227,10 @@ jobs:
           for f in dft-monitor-desktop-*.zip; do
             [ -f "$f" ] && unzip -q "$f" -d ../humo
           done
-          ls -R ../humo | head -20
+          # `|| true`: el paso corre con `-e -o pipefail`, y `head` cierra la
+          # tuberia en cuanto tiene sus 20 lineas --- `ls` muere con SIGPIPE y
+          # tumbaba el trabajo por un listado informativo.
+          ls -R ../humo | head -20 || true
 
       - name: El binario responde por si mismo
         shell: bash
