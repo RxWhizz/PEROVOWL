@@ -235,7 +235,7 @@ jobs:
       - name: El binario responde por si mismo
         shell: bash
         run: |
-          MOTOR="$(find humo -type f \( -name dft-monitor-engine -o -name dft-monitor-engine.exe \) | head -1)"
+          MOTOR="$(find humo -type f \( -name dft-monitor-engine -o -name dft-monitor-engine.exe \) -print -quit)"
           if [ -z "$MOTOR" ]; then
             echo "::error::no hay motor en el paquete publicado"; ls -R humo; exit 1
           fi
@@ -264,7 +264,7 @@ jobs:
       - name: Y arranca de verdad
         shell: bash
         run: |
-          MOTOR="$(find humo -type f \( -name dft-monitor-engine -o -name dft-monitor-engine.exe \) | head -1)"
+          MOTOR="$(find humo -type f \( -name dft-monitor-engine -o -name dft-monitor-engine.exe \) -print -quit)"
           mkdir -p humo-datos
           "$MOTOR" --engine --print-ready-json --port 0 --data-root "$PWD/humo-datos" > listo.jsonl 2>arranque.log &
           for _ in $(seq 1 90); do
