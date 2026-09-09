@@ -8,8 +8,11 @@ import pytest
 # `perovskite-utils` es una dependencia de git (ver requirements.txt), no un
 # paquete del repositorio. Sin ella este modulo no se puede ni recolectar, y un
 # ImportError en la recoleccion aborta la suite ENTERA --- no solo este fichero.
-# CI la instala, asi que alli el contrato se comprueba de verdad; en un entorno
-# de desarrollo sin ella, saltarlo es preferible a no poder correr nada.
+# CI TAMPOCO la instala: el repositorio es privado y el runner no tiene
+# credenciales --- intentarlo tumbaba el trabajo de pruebas entero antes de
+# ejecutar una sola. Asi que este contrato solo se comprueba donde la dependencia
+# esta puesta a mano; en cualquier otro sitio, saltarlo es preferible a no poder
+# correr nada. Queda declarado como limitacion, no disimulado como cobertura.
 pytest.importorskip(
     "perovowl",
     reason="requiere la dependencia de git perovskite-utils (requirements.txt)",
