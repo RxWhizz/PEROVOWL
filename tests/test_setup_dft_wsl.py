@@ -254,6 +254,11 @@ def test_se_elige_el_entorno_que_importa_gpaw(monkeypatch):
     """Existir el binario no basta: un entorno a medio crear tiene el ejecutable
     y no el paquete. Aquí hay dos y solo uno sirve."""
     monkeypatch.setattr(setup_wizard, "_wsl_disponible", lambda: True)
+    # `distros_wsl` tambien se mockea: si no, el sondeo corta en "hay wsl.exe
+    # pero ninguna distro instalada" y esta prueba mide la maquina que la corre
+    # en vez del codigo. En Windows con Ubuntu pasaba; en un runner de Linux,
+    # no --- y las que esperan None pasaban por el motivo equivocado.
+    monkeypatch.setattr(setup_wizard, "distros_wsl", lambda: ["Ubuntu"])
 
     class _Proc:
         def __init__(self, rc, out=""):
@@ -279,6 +284,7 @@ def test_si_no_hay_ninguno_se_dice_en_vez_de_inventar(monkeypatch):
     """Sin GPAW instalado hay que instalarlo, y eso son ~2.5 GB: no se hace a
     escondidas desde el arranque rápido."""
     monkeypatch.setattr(setup_wizard, "_wsl_disponible", lambda: True)
+    monkeypatch.setattr(setup_wizard, "distros_wsl", lambda: ["Ubuntu"])
 
     class _Proc:
         def __init__(self, rc, out=""):

@@ -1114,15 +1114,40 @@ def test_structure_content_rechaza_identificadores_hostiles(batch_client):
         assert r.status_code in (400, 404), ident
 
 
-def test_reports_lista_documentos_y_galerias(client):
+def test_reports_lista_las_galerias_declaradas(client):
+    """Los manifest sí están versionados, así que esto vale en cualquier clon."""
     body = client.get("/api/reports").json()
-    assert any(d["path"].endswith(".md") for d in body["documents"])
     assert body["galleries"]
 
     g = body["galleries"][0]
     assert {"n_declared", "n_present", "figures"} <= set(g)
     # Los PNG/PDF están en .gitignore: n_present puede ser 0 y es lo normal.
     assert g["n_present"] <= g["n_declared"]
+
+
+def test_reports_lista_los_informes_del_usuario(tmp_path):
+    """Los `.md` de reports/ los genera el usuario y `.gitignore` los excluye
+    (`*.md`), así que tras un clon limpio no hay ninguno.
+
+    Antes esto se afirmaba contra el disco del desarrollador: `assert any(...md)`
+    pasaba por los informes que dejaban sesiones anteriores, y en un runner de
+    CI fallaba. Medía la máquina, no el código. Ahora la prueba pone el informe
+    que espera encontrar.
+    """
+    paths.set_data_root(tmp_path)
+    try:
+        (tmp_path / "reports").mkdir()
+        (tmp_path / "reports" / "ronda_07.md").write_text("# Ronda 7\n", encoding="utf-8")
+
+        app = create_app(config={})
+        app.state.poller = StubPoller(tmp_path, SNAPSHOTS)
+        app.state.hub = None
+        body = TestClient(app).get("/api/reports").json()
+
+        rutas = [d["path"] for d in body["documents"]]
+        assert any(r.endswith("ronda_07.md") for r in rutas), rutas
+    finally:
+        paths.reset_data_root()
 
 
 def test_report_document_devuelve_el_markdown(client):
