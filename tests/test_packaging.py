@@ -1065,3 +1065,97 @@ def _lista_del_spec(spec: str, nombre: str) -> set[str]:
     if not m:
         return set()
     return set(re.findall(r'"([A-Za-z_][A-Za-z0-9_.]*)"', m.group(1)))
+
+
+# ── La puerta que faltaba: preguntarle al paquete publicado ──────────────────
+#
+# El smoke test de `build_desktop.sh` corre sobre `dist/` ANTES de comprimir, y
+# solo comprueba que el motor arranca y responde /api/health. Un binario sin
+# spglib arranca perfectamente: se publico cuatro veces seguidas. Lo mismo con
+# la tabla de escala ausente, que dejaba el Tier 1 descartando el 100 %.
+
+def _trabajos_del_workflow() -> dict:
+    import yaml
+
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+
+
+def test_ci_prueba_el_artefacto_que_va_a_publicar():
+    trabajos = _trabajos_del_workflow()
+
+    assert "humo" in trabajos, (
+        "sin un trabajo que descargue el artefacto y lo interrogue, lo unico "
+        "que se verifica es el arbol de fuentes, donde nunca falta nada")
+    assert "build" in trabajos["humo"]["needs"]
+
+    pasos = "\n".join(p.get("run", "") for p in trabajos["humo"]["steps"])
+    assert "--autodiagnostico" in pasos
+    assert "download-artifact" in str(trabajos["humo"]["steps"])
+
+
+def test_nada_se_publica_sin_pasar_por_la_prueba_de_humo():
+    trabajos = _trabajos_del_workflow()
+
+    assert "humo" in trabajos["publish"]["needs"], (
+        "si publish no depende de humo, la comprobacion existe pero no bloquea "
+        "nada --- que es exactamente lo que pasaba con las 756 pruebas")
+
+
+def test_el_autodiagnostico_comprueba_lo_que_ha_roto_releases():
+    """No vale con que exista: tiene que mirar las cosas concretas que se han
+    publicado rotas."""
+    fuente = (ROOT / "src" / "monitor_api" / "autodiagnostico.py").read_text(encoding="utf-8")
+
+    assert "eg_scale" in fuente, "la tabla de escala viajaba ausente"
+    assert "bandgap_scissor" in fuente, "la tabla de SOC, tambien"
+    assert "221" in fuente, (
+        "spglib tiene que IDENTIFICAR una cubica, no solo importar: la version "
+        "nueva devuelve un dataclass y la vieja un dict")
+
+
+def test_el_flag_existe_en_el_lanzador():
+    fuente = (ROOT / "src" / "monitor_api" / "launcher.py").read_text(encoding="utf-8")
+
+    assert "--autodiagnostico" in fuente
+    assert "imprimir_y_salir" in fuente
+
+
+def test_todos_los_sitios_que_declaran_version_dicen_la_misma():
+    """`monitor_api.__version__` se documenta como la unica fuente de verdad,
+    pero hay seis sitios que la escriben a mano y solo uno tenia prueba. Subir
+    de 0.7.7 a 0.8.0 dejo cinco desincronizados; en el peor caso eso es un
+    `buho --version` que miente y un lock que no cuadra con su package.json.
+
+    Es la misma clase de fallo que el resto de esta version: una afirmacion en
+    un comentario que nada obligaba a cumplir.
+    """
+    import re
+
+    import yaml
+
+    declaraciones = {}
+
+    pkg = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
+    declaraciones["frontend/package.json"] = pkg["version"]
+
+    lock = json.loads((ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8"))
+    declaraciones["package-lock.json (raiz)"] = lock["version"]
+    declaraciones["package-lock.json (paquete)"] = lock["packages"][""]["version"]
+
+    pubspec = yaml.safe_load(
+        (ROOT / "apps" / "dft_monitor_flutter" / "pubspec.yaml").read_text(encoding="utf-8"))
+    # `1.2.3+4`: el sufijo es el build number de Flutter, no la version.
+    declaraciones["pubspec.yaml"] = str(pubspec["version"]).split("+")[0]
+
+    # `buho` toma la version de los metadatos de la distribucion y solo cae a
+    # este literal cuando se ejecuta desde el repo sin instalar --- que es como
+    # se ejecuta durante el desarrollo, o sea justo cuando importa.
+    for modulo in ("buho", "dft_cspbi3"):
+        fuente = (ROOT / "src" / modulo / "__init__.py").read_text(encoding="utf-8")
+        m = re.search(r'__version__ = "([^"]+)"', fuente)
+        assert m, f"src/{modulo}/__init__.py ya no declara __version__"
+        declaraciones[f"src/{modulo}/__init__.py"] = m.group(1)
+
+    discrepantes = {k: v for k, v in declaraciones.items() if v != __version__}
+    assert not discrepantes, (
+        f"estos declaran otra version que monitor_api ({__version__}): {discrepantes}")

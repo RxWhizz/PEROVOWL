@@ -13,6 +13,15 @@ Protocolo, deliberadamente minimo:
     echo '{"candidates":[...],"config":{...}}' | buho_mlff_worker.py --stdin
         -> {"status":"ok","results":[{"candidate_id":...,"Eg_gnn_eV":...},...]}
 
+    echo '{"estructuras":[...],"opciones":{...}}' | buho_mlff_worker.py --fases
+        -> {"status":"ok","resultados":[{"candidate_id":...,"fase":...},...]}
+
+La orden `--fases` esta aqui y no en el motor porque elegir fase no se puede
+hacer a distancia: `seleccionar_fase` relaja cada candidata con FIRE sobre un
+filtro de celda, y eso exige un calculador ASE **en proceso** que devuelva
+energia, fuerzas y tension. El potencial vive en este entorno; lo unico que
+cruza la frontera es la geometria ganadora.
+
 El lote entero va en una sola invocacion a proposito: cargar MEGNet y M3GNet
 cuesta bastante mas que predecir, asi que una llamada por candidato
 multiplicaria ese coste fijo por N.
@@ -189,6 +198,93 @@ def predict(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     return {"status": "ok", "results": results}
 
 
+#: Potencial de fuerzas por defecto. Es el que midio la competencia de fases
+#: sobre CsPbI3: la ortorrombica gana a la cubica por 124 meV por formula, que
+#: es lo que dice el experimento. El nombre corto de matgl 0.x ya no existe.
+MODELO_PES = "M3GNet-PES-MatPES-PBE-2025.2"
+
+
+def _geometria(atoms) -> dict[str, Any]:
+    """La celda ganadora, en JSON puro.
+
+    Cruza la frontera la geometria y no el objeto: al otro lado no hay por que
+    tener ASE cargado con la misma version, y un `Atoms` no se serializa.
+    """
+    return {
+        "symbols": list(atoms.get_chemical_symbols()),
+        "positions": [[float(v) for v in fila] for fila in atoms.get_positions()],
+        "cell": [[float(v) for v in fila] for fila in atoms.get_cell()],
+        "pbc": [bool(v) for v in atoms.get_pbc()],
+    }
+
+
+def fases(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """Elige, para cada estructura del lote, la fase de menor energia.
+
+    El lote entero en una invocacion, por el mismo motivo que `predict`: cargar
+    el potencial cuesta mucho mas que usarlo, y aqui ademas cada estructura son
+    cinco relajaciones.
+    """
+    _ensure_importable(root)
+
+    estructuras = payload.get("estructuras") or []
+    if not estructuras:
+        return {"status": "ok", "resultados": []}
+
+    opciones = payload.get("opciones") or {}
+    nombre = str(opciones.get("modelo_pes") or MODELO_PES)
+    fmax = float(opciones.get("fmax", 0.05))
+    pasos = int(opciones.get("pasos", 300))
+    supercelda = tuple(int(v) for v in (opciones.get("supercelda_base") or (2, 2, 2)))
+
+    resultados: list[dict[str, Any]] = []
+    with contextlib.redirect_stdout(sys.stderr):
+        import matgl
+        from ase import Atoms
+        from matgl.ext.ase import PESCalculator
+
+        from buho.structure import fases as modulo_fases
+
+        calculador = PESCalculator(matgl.load_model(nombre))
+
+        for item in estructuras:
+            cid = str(item.get("candidate_id", ""))
+            try:
+                atoms = Atoms(
+                    symbols=item["symbols"],
+                    positions=item["positions"],
+                    cell=item["cell"],
+                    pbc=item.get("pbc", True),
+                )
+            except Exception as exc:  # noqa: BLE001
+                resultados.append({"candidate_id": cid, "ok": False,
+                                   "motivo": f"geometria invalida: {exc}"})
+                continue
+
+            try:
+                r = modulo_fases.seleccionar_fase(
+                    atoms, calculador,
+                    b_sites=set(item.get("b_sites") or ()),
+                    x_sites=set(item.get("x_sites") or ()),
+                    a_semilla=float(item["a_semilla_A"]),
+                    supercelda_base=supercelda,
+                    fmax=fmax,
+                    pasos=pasos,
+                )
+            except Exception as exc:  # noqa: BLE001 - uno no tumba el lote
+                resultados.append({"candidate_id": cid, "ok": False,
+                                   "motivo": f"{type(exc).__name__}: {exc}"})
+                continue
+
+            salida = {k: v for k, v in r.items() if k != "atoms"}
+            salida["candidate_id"] = cid
+            if r.get("atoms") is not None:
+                salida["geometria"] = _geometria(r["atoms"])
+            resultados.append(salida)
+
+    return {"status": "ok", "resultados": resultados, "modelo_pes": nombre}
+
+
 # ── Entrada ───────────────────────────────────────────────────────────────────
 
 
@@ -198,6 +294,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="Comprueba el entorno y sale sin predecir.")
     parser.add_argument("--stdin", action="store_true",
                         help="Lee el lote JSON de stdin.")
+    parser.add_argument("--fases", action="store_true",
+                        help="Elige la fase de menor energia de cada estructura "
+                             "del lote JSON de stdin.")
     parser.add_argument("--project-root", default=None,
                         help="Raiz del repo (por defecto, la del propio script).")
     args = parser.parse_args(argv)
@@ -207,16 +306,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.preflight_only:
             out = preflight(root)
-        elif args.stdin:
+        elif args.stdin or args.fases:
             raw = sys.stdin.read()
             try:
                 payload = json.loads(raw) if raw.strip() else {}
             except json.JSONDecodeError as exc:
                 out = {"status": "error", "error": f"lote JSON invalido: {exc}"}
             else:
-                out = predict(root, payload)
+                out = fases(root, payload) if args.fases else predict(root, payload)
         else:
-            out = {"status": "error", "error": "Usa --preflight-only o --stdin."}
+            out = {"status": "error",
+                   "error": "Usa --preflight-only, --stdin o --fases."}
     except Exception as exc:  # noqa: BLE001 - la respuesta SIEMPRE es JSON
         out = {
             "status": "error",

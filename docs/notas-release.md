@@ -1,16 +1,18 @@
-# Monitor DFT 0.7.7
+# Monitor DFT 0.8.0
 
-**La competencia de fases ya se puede medir.** El pipeline genera las
-distorsiones de inclinación que una perovskita de haluro admite de verdad
-(Glazer a⁰a⁰a⁰, a⁰a⁰c⁻, a⁰a⁰c⁺, a⁻a⁻a⁻, a⁻a⁻c⁺), las deja competir en energía e
-identifica el grupo espacial de la ganadora con spglib. Sobre CsPbI₃ la fase
-cúbica pierde por 124 meV por fórmula, que es lo que dice el experimento.
+**El protocolo ya no supone que todo es cúbico.** Antes de preparar cada
+cálculo DFT se generan las distorsiones de inclinación que una perovskita de
+haluro admite de verdad, compiten en energía con el potencial interatómico, y a
+DFT va la ganadora con el grupo espacial identificado por spglib. Sobre CsPbI₃
+la cúbica pierde por 124 meV por fórmula —es la fase α, que solo existe por
+encima de 330 °C— y eso vale del orden de 1 eV de bandgap.
 
-> **Todavía como herramienta, no dentro del protocolo.** El módulo se usa desde
-> `scripts/probar_fases_cspbi3.py` y necesita un potencial interatómico (MLFF).
-> El bucle autónomo **sigue preparando la fase cúbica**: falta conectar la
-> relajación del MLFF (ver *Limitaciones conocidas*). Versiones anteriores de
-> estas notas daban a entender lo contrario.
+> Hasta 0.7.7 el módulo de fases existía, funcionaba y estaba probado, pero
+> **nada lo llamaba**: el bucle autónomo preparaba la cúbica. Lo que faltaba era
+> el cruce con el entorno del MLFF, y es lo que trae esta versión.
+
+Sin potencial interatómico instalado se prepara la cúbica, igual que antes, y se
+dice en el ledger y en el informe.
 
 Interfaz gráfica del pipeline de cribado de perovskitas: genera candidatos, los
 criba con la cascada HTS, prepara y lanza los cálculos DFT, y sigue el progreso
@@ -20,16 +22,16 @@ en vivo.
 
 Abre la pagina del release:
 
-<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.7.7>
+<https://github.com/RxWhizz/PEROVOWL/releases/tag/v0.8.0>
 
 En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 | Sistema | Archivo recomendado | Uso |
 |---|---|---|
-| Windows 10/11 x64 | `dft-monitor-desktop-0.7.7-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
-| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.7.7-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
-| Linux x86_64 portable | `dft-monitor-desktop-0.7.7-linux-x86_64.tar.gz` | GUI portable sin instalador |
-| Linux servidor/web | `dft-monitor-web-0.7.7-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
+| Windows 10/11 x64 | `dft-monitor-desktop-0.8.0-windows-x64.zip` | GUI de escritorio nativa con motor local embebido |
+| Debian/Ubuntu x64 | `perovowl-dft-monitor-0.8.0-linux-amd64.deb` | GUI de escritorio instalable en el sistema |
+| Linux x86_64 portable | `dft-monitor-desktop-0.8.0-linux-x86_64.tar.gz` | GUI portable sin instalador |
+| Linux servidor/web | `dft-monitor-web-0.8.0-linux-x86_64.tar.gz` | Servidor local que abre la interfaz en navegador |
 
 `SHA256SUMS` acompaña a los artefactos para verificar la descarga.
 
@@ -37,13 +39,13 @@ En **Assets**, descarga el paquete que corresponda a tu sistema:
 
 ### Windows
 
-Descarga `dft-monitor-desktop-0.7.7-windows-x64.zip`, descomprimelo **en una
+Descarga `dft-monitor-desktop-0.8.0-windows-x64.zip`, descomprimelo **en una
 carpeta corta** (p. ej. `C:\perovowl`) y ejecuta el `.exe` desde dentro de la
 carpeta extraida:
 
 ```powershell
-Expand-Archive .\dft-monitor-desktop-0.7.7-windows-x64.zip -DestinationPath C:\perovowl
-C:\perovowl\dft-monitor-desktop-0.7.7-windows-x64\dft_monitor_flutter.exe
+Expand-Archive .\dft-monitor-desktop-0.8.0-windows-x64.zip -DestinationPath C:\perovowl
+C:\perovowl\dft-monitor-desktop-0.8.0-windows-x64\dft_monitor_flutter.exe
 ```
 
 No necesita Python, Node, Flutter ni el repositorio. El motor local viaja dentro
@@ -155,10 +157,10 @@ motor" y apunta al ejecutable a mano.
 
 ### Debian/Ubuntu
 
-Descarga `perovowl-dft-monitor-0.7.7-linux-amd64.deb` e instalalo con:
+Descarga `perovowl-dft-monitor-0.8.0-linux-amd64.deb` e instalalo con:
 
 ```bash
-sudo apt install ./perovowl-dft-monitor-0.7.7-linux-amd64.deb
+sudo apt install ./perovowl-dft-monitor-0.8.0-linux-amd64.deb
 perovowl-dft-monitor
 ```
 
@@ -171,8 +173,8 @@ no defines `DFT_DATA_ROOT`.
 Si no quieres instalar el paquete `.deb`, usa el bundle portable:
 
 ```bash
-tar xzf dft-monitor-desktop-0.7.7-linux-x86_64.tar.gz
-./dft-monitor-desktop-0.7.7-linux-x86_64/dft_monitor_flutter
+tar xzf dft-monitor-desktop-0.8.0-linux-x86_64.tar.gz
+./dft-monitor-desktop-0.8.0-linux-x86_64/dft_monitor_flutter
 ```
 
 ### Linux web/servidor
@@ -180,7 +182,7 @@ tar xzf dft-monitor-desktop-0.7.7-linux-x86_64.tar.gz
 Para abrir la interfaz desde navegador o mirar el pipeline desde otra maquina:
 
 ```bash
-tar xzf dft-monitor-web-0.7.7-linux-x86_64.tar.gz
+tar xzf dft-monitor-web-0.8.0-linux-x86_64.tar.gz
 ./dft-monitor-web/dft-monitor-web --data-root /ruta/a/tus/datos
 ```
 
@@ -258,8 +260,8 @@ falló cada uno. Con eso se distingue «no lo encontré» de «no miré».
 En Windows:
 
 ```powershell
-Get-FileHash .\dft-monitor-desktop-0.7.7-windows-x64.zip -Algorithm SHA256
-Get-FileHash .\perovowl-dft-monitor-0.7.7-linux-amd64.deb -Algorithm SHA256
+Get-FileHash .\dft-monitor-desktop-0.8.0-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\perovowl-dft-monitor-0.8.0-linux-amd64.deb -Algorithm SHA256
 ```
 
 En Linux:
@@ -269,6 +271,31 @@ sha256sum -c SHA256SUMS
 ```
 
 ## Qué trae
+
+### Nuevo en 0.8.0
+
+- **La fase se mide, no se supone.** El protocolo autónomo y el botón de DFT de
+  la interfaz construyen ahora la competencia de fases antes de preparar cada
+  trabajo: cinco distorsiones de Glazer, relajación con el potencial, y a GPAW
+  la de menor energía —reescalada al tamaño de la semilla calibrada, porque el
+  potencial ordena bien pero infla el volumen un 4.6 %. El ledger y el informe
+  guardan la fase y su grupo espacial, así que un bandgap deja de ser «de
+  CsPbI₃» para ser «de la Pnma de CsPbI₃».
+- **La ronda entera en una sola llamada al MLFF.** Cargar el potencial cuesta
+  mucho más que usarlo, y en Windows hay que sumar el arranque de WSL. Elegir
+  fase candidato a candidato habría multiplicado ese coste fijo por el tamaño
+  del lote.
+- **El cribado deja de descartar por su propio error de calibración.** La malla
+  del Tier 1 contaba la σ del surrogate y daba por exacto el desplazamiento a
+  escala experimental. Ese desplazamiento tiene su propio error medido —6.0 %,
+  unos 0.11 eV en el borde superior de la ventana— y ahora cuenta: CsPbI₃
+  (1.839 predicho frente a 1.73 medido) y CsSnBr₃ (1.844 / 1.75) dejan de
+  perderse por centésimas siendo candidatos válidos.
+- **El binario responde por sí mismo.** `--autodiagnostico` imprime en JSON qué
+  viaja de verdad en este paquete: las dos tablas de calibración, si spglib
+  **identifica** una cúbica ideal como Pm-3m, si el modelo de bandgap carga y
+  declara su escala, y si están las estructuras. Sale con código 1 si falta algo
+  crítico. Sirve para reportar un problema sin adivinar.
 
 ### Nuevo en 0.7.0
 
@@ -385,6 +412,33 @@ sha256sum -c SHA256SUMS
   núcleos por trabajo aguanta la máquina.
 
 ## Correcciones importantes
+
+### Corregido en 0.8.0
+
+- **La fase elegida no llegaba al cálculo.** Aunque hubiera selector, `prepare`
+  exportaba la cúbica **antes** de elegir fase y el `input.py` generado hace
+  `read("structure.cif")`: la selección escribía un `fases.json` diciendo
+  «ortorrómbica» y GPAW seguía relajando la cúbica. Ahora se reexporta, y la
+  cúbica de partida se conserva como `structure_cubica.cif` para poder auditar
+  de dónde salió la celda.
+- **Una fase inclinada se calculaba con la malla k equivocada.** La bandera de
+  supercelda —que decide la malla y el reparto MPI— se derivaba solo de si la
+  composición era mixta. Una fase inclinada es una supercelda 2×2×2 aunque el
+  compuesto sea puro, así que se muestreaba a [2,2,2] sobre una celda ya
+  duplicada: malla efectiva 4³, ocho veces el coste, y **distinta de la 2³ a la
+  que está calibrada toda la escala de bandgap**. Es la misma incoherencia que
+  hacía que las dos mitades de la corrección no compusieran. Ahora sale del
+  número de átomos que se van a calcular.
+- **Nada verificaba el paquete que se publicaba.** El smoke test del build corre
+  sobre `dist/` antes de comprimir y solo comprueba que el motor arranca —un
+  binario sin spglib arranca perfectamente, y se publicó cuatro veces seguidas.
+  CI descarga ahora su propio artefacto, lo extrae como lo hará un usuario y le
+  pregunta al binario por sí mismo; `publish` depende de que pase.
+- **`configs/default_params.yaml` no llegaba a ninguna instalación.**
+  `dft_cspbi3.calculator_factory` lo resuelve contra la raíz del pipeline y hace
+  `open()` sin comprobar que exista, pero ni el empaquetado ni la
+  materialización lo copiaban. Hoy no está en el camino crítico; es la misma
+  clase de fallo que dejó el scissor de SOC sin cargar durante versiones.
 
 ### Corregido en 0.7.7
 
@@ -643,14 +697,39 @@ quejarse**, así que el programa seguía dando resultados plausibles pero mal.
 - **Seguimiento de lotes**: el monitor se quedaba mirando el lote configurado al
   arrancar y no veía los lanzados después.
 
-## Limitación conocida
+## Limitaciones conocidas
 
-El protocolo autónomo puede declararse `done` tras pocas rondas aunque queden
-miles de candidatos sin verificar: la ventana fotovoltaica del Tier 1 asume
-bandgap experimental, y el surrogate aprende el bandgap PBE de la criba, que es
-sistemáticamente más bajo. No es un fallo del código — es una calibración
-pendiente. Detalle y opciones de arreglo en
-[#7](https://github.com/RxWhizz/PEROVOWL/issues/7).
+No son defectos: son el nivel de teoría al que trabaja el pipeline. Lo que no
+puede hacer es callarlas.
+
+**La calibración del bandgap cubre solo haluros puros de Cs.** Nueve compuestos,
+todos con Cs en el sitio A y un solo halógeno. Toda composición mixta —que es la
+mayor parte del espacio que el pipeline explora— asume que el desplazamiento
+interpola linealmente con las fracciones de cada sitio. Es una aproximación sin
+comprobar. El error del 6.0 % es **en muestra**: no se ha medido validación
+cruzada dejando uno fuera, y cuatro de los nueve tienen fase no cúbica a
+temperatura ambiente y entran ponderados a 0.3.
+
+**Sin fonones no hay estabilidad dinámica.** Una fase puede ganar en energía a
+0 K y ser dinámicamente inestable, y no hay forma de saberlo sin calcular
+frecuencias. Tampoco de encontrar distorsiones que no estén en la tabla de
+Glazer. Relacionado: dos fases tetragonales salen degeneradas con M3GNet —radio
+de corte corto— y la ortorrómbica no converge en fuerzas.
+
+**Medir la fase no es confirmarla.** La competencia es a 0 K y con un potencial
+que no está validado en esta familia; da un orden, no una prueba. Que la fase δ
+de CsPbI₃ gane a 0 K y la α cúbica a 330 °C es energía libre, no entalpía: el
+pipeline no simula temperatura.
+
+**El DFT del cribado no relaja el volumen.** Es single-point por defecto; con
+`max_steps>0` usa FIRE sin filtro de celda, así que relaja posiciones y nunca el
+volumen. El parámetro de red viene de la fórmula empírica con contracción por
+pareja (B, X).
+
+**Los binarios no están firmados.** Windows Defender pone en cuarentena
+`engine\dft-monitor-engine.exe` por ser PyInstaller sin firmar. Hay un rodeo en
+la pestaña Diagnóstico, pero «desactiva el antivirus» no es una instrucción
+aceptable para un 1.0: esa versión espera a resolverlo.
 
 ## Licencias
 

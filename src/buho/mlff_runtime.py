@@ -35,6 +35,12 @@ DEFAULT_WSL_ENV = "perovowl-mlff"
 #: 5000 se resuelve en tres llamadas en vez de en una de siete minutos.
 DEFAULT_CHUNK = 2000
 
+#: Tiempo por defecto para la seleccion de fase. Elegir fase no es predecir:
+#: cada estructura son cinco relajaciones FIRE sobre celdas de 40 atomos con
+#: filtro de celda, y el lote no se trocea. El timeout de prediccion (900 s) se
+#: agotaria a mitad y no habria forma de distinguirlo de un entorno roto.
+DEFAULT_TIMEOUT_FASES = 3600
+
 #: Paquetes que Tier 2 necesita para importar, en orden de coste de fallo.
 REQUIRED_MODULES = ("torch", "matgl", "pymatgen")
 
@@ -43,6 +49,7 @@ MLFF_ENV_KEYS = {
     "python": ("BUHO_MLFF_PYTHON",),
     "worker": ("BUHO_MLFF_WORKER",),
     "timeout": ("BUHO_MLFF_TIMEOUT",),
+    "timeout_fases": ("BUHO_MLFF_TIMEOUT_FASES",),
 }
 WSL_MLFF_ENV_KEYS = {
     "distro": ("BUHO_WSL_MLFF_DISTRO", "BUHO_WSL_DISTRO"),
@@ -114,6 +121,7 @@ class MLFFRuntime:
     micromamba: str | None = None     # binario micromamba en WSL (para el wizard)
     timeout: int = 900                # por llamada, no por lote entero
     chunk_size: int = DEFAULT_CHUNK
+    timeout_fases: int = DEFAULT_TIMEOUT_FASES   # relajar cuesta otro orden
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -126,6 +134,7 @@ class MLFFRuntime:
             "micromamba": self.micromamba,
             "timeout": self.timeout,
             "chunk_size": self.chunk_size,
+            "timeout_fases": self.timeout_fases,
         }
 
     # ── Construccion del comando ──────────────────────────────────────────────
@@ -276,6 +285,32 @@ class MLFFRuntime:
         return resultados
 
 
+    def fases(self, estructuras: list[dict[str, Any]], *,
+              opciones: dict[str, Any] | None = None,
+              timeout: int | None = None) -> list[dict[str, Any]]:
+        """Elige la fase de menor energia de cada estructura del lote.
+
+        Por que esto vive detras del worker y no en el motor: `seleccionar_fase`
+        relaja con FIRE sobre un filtro de celda, y eso necesita un calculador
+        ASE **en proceso** con energia, fuerzas y tension. El potencial esta en
+        el entorno del MLFF --- en Windows, dentro de WSL--- y no se puede pasar
+        por una tuberia. Lo que cruza es la geometria ganadora.
+
+        El lote NO se trocea. `predict` lo hace porque son miles de candidatos
+        de coste uniforme; aqui son las decenas que van a DFT en una ronda, y
+        partirlas solo multiplicaria la carga del potencial.
+        """
+        if not estructuras:
+            return []
+
+        payload = json.dumps(
+            {"estructuras": estructuras, "opciones": opciones or {}},
+            ensure_ascii=False)
+        out = self._run(["--fases"], stdin=payload,
+                        timeout=timeout or self.timeout_fases)
+        return out.get("resultados", [])
+
+
 # ── Resolucion ────────────────────────────────────────────────────────────────
 
 
@@ -337,6 +372,11 @@ def resolve(config: dict[str, Any] | None = None, *, project_root: Path | str | 
     except (TypeError, ValueError):
         chunk = DEFAULT_CHUNK
     chunk = max(1, chunk)
+    try:
+        timeout_fases = int(
+            _option("timeout_fases", mlff_cfg, wsl=False) or DEFAULT_TIMEOUT_FASES)
+    except (TypeError, ValueError):
+        timeout_fases = DEFAULT_TIMEOUT_FASES
 
     wsl_python = _option("python", mlff_cfg, wsl=True)
     env_name = _option("env_name", mlff_cfg, wsl=True) or DEFAULT_WSL_ENV
@@ -362,7 +402,7 @@ def resolve(config: dict[str, Any] | None = None, *, project_root: Path | str | 
 
     if backend == "off":
         return MLFFRuntime(backend="off", env_name=env_name, timeout=timeout,
-                           chunk_size=chunk)
+                           chunk_size=chunk, timeout_fases=timeout_fases)
 
     if backend == "wsl":
         if not wsl_python:
@@ -377,6 +417,7 @@ def resolve(config: dict[str, Any] | None = None, *, project_root: Path | str | 
             micromamba=micromamba,
             timeout=timeout,
             chunk_size=chunk,
+            timeout_fases=timeout_fases,
         )
 
     local_python = _option("python", mlff_cfg, wsl=False) or sys.executable
@@ -389,6 +430,7 @@ def resolve(config: dict[str, Any] | None = None, *, project_root: Path | str | 
         env_name=env_name,
         timeout=timeout,
         chunk_size=chunk,
+        timeout_fases=timeout_fases,
     )
 
 

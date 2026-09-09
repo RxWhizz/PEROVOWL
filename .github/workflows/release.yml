@@ -166,8 +166,100 @@ jobs:
             dist/*.sha256
           retention-days: 7
 
-  publish:
+  # ── Nada se publica sin que el propio paquete responda ─────────────────────
+  #
+  # El smoke test de `build_desktop.sh` corre sobre `dist/` ANTES de comprimir,
+  # asi que todo lo que se rompe a partir de ahi --- o lo que ya estaba roto
+  # dentro del bundle y el arranque no toca--- viajaba sin que nada lo mirase.
+  # Cuatro versiones se publicaron sin spglib y una con la tabla de escala
+  # ausente: en las cinco, el binario arrancaba perfectamente.
+  #
+  # Esto descarga el artefacto que se va a publicar, lo extrae como lo hara un
+  # usuario, y le pregunta al binario por si mismo.
+  humo:
     needs: [version, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            plataforma: linux-x86_64
+          - os: windows-latest
+            plataforma: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dft-monitor-${{ matrix.plataforma }}
+          path: artefacto
+
+      - name: Extraer el paquete
+        shell: bash
+        run: |
+          mkdir -p humo
+          cd artefacto
+          for f in dft-monitor-desktop-*.tar.gz; do
+            [ -f "$f" ] && tar xzf "$f" -C ../humo
+          done
+          for f in dft-monitor-desktop-*.zip; do
+            [ -f "$f" ] && unzip -q "$f" -d ../humo
+          done
+          ls -R ../humo | head -20
+
+      - name: El binario responde por si mismo
+        shell: bash
+        run: |
+          MOTOR="$(find humo -type f \( -name dft-monitor-engine -o -name dft-monitor-engine.exe \) | head -1)"
+          if [ -z "$MOTOR" ]; then
+            echo "::error::no hay motor en el paquete publicado"; ls -R humo; exit 1
+          fi
+          chmod +x "$MOTOR" || true
+          echo "motor: $MOTOR"
+
+          # Sale 1 si falta cualquier cosa critica; el JSON dice cual.
+          "$MOTOR" --autodiagnostico --data-root "$PWD/humo" | tee informe.json
+          python -c "
+          import json, sys
+          d = json.load(open('informe.json', encoding='utf-8'))
+          for aviso in d.get('avisos', []):
+              print('::warning::' + aviso)
+          if not d['ok']:
+              for f in d['fallos']:
+                  print('::error::' + f)
+              sys.exit(1)
+          c = d['comprobaciones']
+          assert c['simetria']['numero'] == 221, c['simetria']
+          assert c['tablas_calibracion']['escala']['disponible'], c['tablas_calibracion']
+          assert c['tablas_calibracion']['scissor']['disponible'], c['tablas_calibracion']
+          assert d['rutas']['frozen'], 'el motor publicado deberia estar congelado'
+          print('paquete', d['version'], 'completo')
+          "
+
+      - name: Y arranca de verdad
+        shell: bash
+        run: |
+          MOTOR="$(find humo -type f \( -name dft-monitor-engine -o -name dft-monitor-engine.exe \) | head -1)"
+          mkdir -p humo-datos
+          "$MOTOR" --engine --print-ready-json --port 0 --data-root "$PWD/humo-datos" > listo.jsonl 2>arranque.log &
+          for _ in $(seq 1 90); do
+            grep -q '"event": *"ready"' listo.jsonl 2>/dev/null && break
+            sleep 1
+          done
+          cat arranque.log || true
+          python -c "
+          import json, sys, urllib.request
+          linea = next((l for l in open('listo.jsonl', encoding='utf-8')
+                        if l.strip().startswith('{')), None)
+          if linea is None:
+              sys.exit('el motor no llego a estar listo')
+          base = json.loads(linea)['base_url']
+          salud = json.loads(urllib.request.urlopen(base + '/api/health', timeout=30).read())
+          assert 'version' in salud, salud
+          print('salud:', salud['version'], '| ok:', salud.get('ok'))
+          "
+
+  publish:
+    needs: [version, build, humo]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-22.04
     steps:

@@ -180,6 +180,11 @@ mpirun -n {n_cores} {python} input.py
 '''
 
 
+#: Atomos por formula unitaria de una ABX3. Una celda con mas es una supercelda,
+#: venga de mezclar especies o de inclinar octaedros.
+_ATOMOS_POR_FORMULA = 5
+
+
 def _raiz_o_fallo(project_root, quien: str):
     r"""Raíz explícita, o el CWD solo fuera del binario.
 
@@ -323,6 +328,28 @@ class RelaxationJobPreparer:
         except OSError as exc:
             log.warning("%s: no se pudo guardar fases.json: %s",
                         candidato.candidate_id, exc)
+
+        # Y ahora lo que hace que todo esto sirva de algo. `prepare` ya exporto
+        # la cubica --- structure.cif, POSCAR, metadata.json--- antes de llegar
+        # aqui, y el input.py que se genera hace `read("structure.cif")`. Sin
+        # reexportar, elegir fase no cambiaba nada: GPAW seguia relajando la
+        # cubica y el unico rastro era un fases.json diciendo otra cosa.
+        cubica = job_dir / "structure.cif"
+        if cubica.is_file():
+            try:
+                cubica.replace(job_dir / "structure_cubica.cif")
+            except OSError as exc:
+                log.warning("%s: no se pudo conservar la cubica de partida: %s",
+                            candidato.candidate_id, exc)
+        try:
+            self._builder.export(r["atoms"], job_dir, meta)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("%s: no se pudo exportar la fase elegida (%s: %s); "
+                        "se sigue con la cubica", candidato.candidate_id,
+                        type(exc).__name__, exc)
+            if (job_dir / "structure_cubica.cif").is_file() and not cubica.is_file():
+                (job_dir / "structure_cubica.cif").replace(cubica)
+            return atoms, meta
         return r["atoms"], meta
 
     def _should_skip(self, job_dir: Path) -> bool:
@@ -336,12 +363,15 @@ class RelaxationJobPreparer:
             return False
 
     def _write_input(self, job_dir: Path, c: GeneratedCandidate, atoms) -> None:
-        is_mixed = (
-            len(c.A_site_species) > 1
-            or len(c.B_site_species) > 1
-            or len(c.X_site_species) > 1
-        )
-        is_supercell = is_mixed and self._cfg.get("structure", {}).get("supercell_mixed", [1,1,1]) != [1,1,1]
+        # De los atomos que se van a calcular, no de la composicion. Una fase
+        # inclinada es una supercelda 2x2x2 aunque el compuesto sea puro, y la
+        # plantilla usa esta bandera para dos cosas: la malla k y el reparto
+        # MPI. Derivarla solo de la mezcla la muestreaba a [2,2,2] sobre una
+        # celda ya duplicada --- malla efectiva 4^3, ocho veces el coste y una
+        # malla distinta de la 2^3 a la que esta calibrada toda la escala de
+        # bandgap. Es la misma incoherencia que hacia que las dos mitades de la
+        # correccion no compusieran.
+        is_supercell = len(atoms) > _ATOMOS_POR_FORMULA
         has_sn = any(sp == "Sn" for sp in c.B_site_species)
         has_ma = any(sp == "MA" for sp in c.A_site_species)
 

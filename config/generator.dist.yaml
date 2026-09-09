@@ -117,6 +117,22 @@ discovery:
   max_stale_relaunches: 5
   max_per_b_family: 15
   max_per_halide: 18
+  # ── Competencia de fases ───────────────────────────────────────────────────
+  #
+  # El pipeline construia siempre Pm-3m. Para CsPbI3 esa es la fase alfa, que
+  # solo existe por encima de 330 C: a temperatura ambiente el material esta en
+  # otra, y la cubica pierde por 124 meV/f.u. Con esto activo, antes de preparar
+  # el DFT se generan las distorsiones de inclinacion, compiten en energia con
+  # el potencial y va a calculo la ganadora --- reescalada al tamano de la
+  # semilla, porque el potencial ordena bien pero infla el volumen un 4.6 %.
+  #
+  # Necesita el entorno MLFF. Sin el se prepara la cubica, igual que antes.
+  fases:
+    activo: true
+    modelo_pes: M3GNet-PES-MatPES-PBE-2025.2
+    fmax: 0.05              # eV/A, criterio de parada de la relajacion
+    pasos: 300              # tope de pasos FIRE por fase
+    supercelda_base: [2, 2, 2]
   mlff:
     backend: auto
     timeout: 900

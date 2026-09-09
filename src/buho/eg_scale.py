@@ -108,6 +108,20 @@ def cargar_tabla(ruta: Path | str | None = None) -> dict[str, Any]:
                     "columnas": list(bruto["columnas"]),
                     "coeficientes": [float(v) for v in bruto["coeficientes"]],
                 }
+                # El error de la propia calibracion viaja con el ajuste. Antes
+                # se descartaba al parsear, y la ventana PV se aplicaba como si
+                # el desplazamiento fuera exacto: CsPbI3 (1.839 predicho, 1.73
+                # medido) y CsSnBr3 (1.844 / 1.75) se descartaban siendo
+                # candidatos validos, por menos de lo que la tabla ya sabia que
+                # se equivocaba.
+                err = (datos.get("errores_pct") or {}).get(
+                    "error_relativo_medio_corregido")
+                if err is not None:
+                    try:
+                        ajuste["error_relativo_pct"] = float(err)
+                    except (TypeError, ValueError):
+                        log.warning("error_relativo_medio_corregido no numerico "
+                                    "en %s: %r", encontrada, err)
         except (OSError, ValueError, TypeError) as exc:
             log.warning("tabla de escala ilegible en %s: %s", encontrada, exc)
     else:
@@ -162,6 +176,30 @@ def a_experimental(eg_calculado: float | None,
     return float(eg_calculado) + delta(fracciones_b, fracciones_x, ajuste)
 
 
+def margen_calibracion(eg: float | None,
+                       ajuste: dict[str, Any] | None = None) -> float:
+    """Cuanto se equivoca la propia escala en este valor, en eV.
+
+    El error de la tabla es **relativo** (6.0 % medido sobre los nueve haluros
+    de referencia), asi que en eV crece con el gap: a 1.8 eV son 0.11 eV, que es
+    justo el orden de lo que separaba a los dos falsos negativos de borde de
+    entrar en la ventana. Devolver un margen y no ensanchar la ventana es
+    deliberado: la ventana [1.1, 1.8] sale de Shockley-Queisser y no depende de
+    lo bien que calibremos; lo que depende es la confianza con la que podemos
+    decir que un candidato cae fuera.
+
+    Sin tabla el margen es 0.0 --- sin correccion de escala tampoco hay error de
+    correccion que contar, y el numero cribado ni siquiera esta en esa escala.
+    """
+    if eg is None:
+        return 0.0
+    ajuste = cargar_tabla() if ajuste is None else ajuste
+    pct = float(ajuste.get("error_relativo_pct", 0.0) or 0.0)
+    if pct <= 0.0:
+        return 0.0
+    return abs(float(eg)) * pct / 100.0
+
+
 def describir(ajuste: dict[str, Any] | None = None) -> dict[str, Any]:
     """Estado de la calibracion, para diagnostico."""
     ajuste = cargar_tabla() if ajuste is None else ajuste
@@ -169,4 +207,5 @@ def describir(ajuste: dict[str, Any] | None = None) -> dict[str, Any]:
         "disponible": bool(ajuste),
         "columnas": ajuste.get("columnas", []),
         "coeficientes": ajuste.get("coeficientes", []),
+        "error_relativo_pct": ajuste.get("error_relativo_pct"),
     }

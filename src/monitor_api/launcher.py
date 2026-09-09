@@ -433,6 +433,10 @@ def main(argv: list[str] | None = None) -> None:
                     help="Raíz de los datos del proyecto (runs/, reports/, models/…). "
                          "Por defecto: DFT_DATA_ROOT, o el repositorio si se ejecuta "
                          "desde el código fuente, o el directorio actual.")
+    ap.add_argument("--autodiagnostico", action="store_true",
+                    help="Comprueba que este paquete lleva lo que necesita para "
+                         "funcionar (tablas de calibracion, spglib, modelos), "
+                         "imprime el informe en JSON y sale.")
     ap.add_argument("--no-browser", action="store_true", help="No abrir el navegador.")
     ap.add_argument("--no-build", action="store_true",
                     help="No compilar el frontend aunque falte.")
@@ -466,6 +470,15 @@ def main(argv: list[str] | None = None) -> None:
 
     if not paths.is_frozen():
         sys.path.insert(0, str(paths.bundle_root() / "src"))
+
+    # Antes de levantar nada: preguntar por el paquete no necesita servidor, y
+    # si algo critico falta es mejor decirlo aqui que arrancar y fallar luego en
+    # silencio --- que es exactamente como se publicaron cuatro binarios sin
+    # spglib.
+    if args.autodiagnostico:
+        from monitor_api.autodiagnostico import imprimir_y_salir
+
+        raise SystemExit(imprimir_y_salir())
 
     try:
         import uvicorn

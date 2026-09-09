@@ -349,11 +349,18 @@ def start_dft_for_run(poller, run_id: str, *, start_runner: bool = True) -> dict
 
     candidates = [GeneratedCandidate.from_dict(item) for item in run.selected_candidates]
     python_exe = platform_caps.runner_python(poller.cfg) or "python3"
+    # Misma decision que en el protocolo autonomo: la fase se mide si hay
+    # potencial, y si no se prepara la cubica de siempre. El boton de la GUI no
+    # puede quedarse con otro criterio que el bucle.
+    from buho.structure.selector_mlff import crear_selector_fase
+
+    selector = crear_selector_fase(cfg, candidates, project_root=paths.data_root())
     preparer = RelaxationJobPreparer(
         cfg,
         project_root=paths.data_root(),
         n_cores=int(poller.cfg.get("runner_cores", 8)),
         python=python_exe,
+        selector_fase=selector,
     )
     prepared = preparer.prepare(candidates, out_root=batch_dir, config_src=config_path())
     _mark_screening_passed_jobs(batch_dir, run, candidates)

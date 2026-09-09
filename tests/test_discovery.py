@@ -501,3 +501,51 @@ def test_discovery_report_export(tmp_path):
     report = Path(result["report"])
     assert report.is_file()
     assert "PEROVOWL Discovery Loop" in report.read_text(encoding="utf-8")
+
+
+def test_la_fase_elegida_sobrevive_el_viaje_por_csv(tmp_path):
+    """El ledger decia "CsPbI3: 1.5 eV" sin decir de cual de sus fases, que es
+    media respuesta. Se anota al PREPARAR y no al recoger: la fase se decide
+    ahi, y asi sobrevive a un DFT que falle --- que es justo cuando hace falta
+    saber sobre que estructura fallo."""
+    import json as _json
+
+    from buho.discovery import DiscoveryLoop
+
+    cfg = _config(tmp_path)
+    loop = DiscoveryLoop(config_path=cfg, project_root=ROOT, data_root=tmp_path,
+                         models_root=tmp_path)
+    loop.init_space(reset=True)
+    cid = str(loop._read_ledger().iloc[0]["candidate_id"])
+
+    job = tmp_path / "jobs" / cid
+    job.mkdir(parents=True)
+    (job / "fases.json").write_text(_json.dumps({
+        "ok": True, "fase": "ortorrombica", "glazer": "a-a-c+",
+        "grupo_espacial": {"disponible": True, "numero": 62, "simbolo": "Pnma"},
+    }), encoding="utf-8")
+
+    loop._anotar_fases([job])
+
+    fila = loop._read_ledger().set_index("candidate_id").loc[cid]
+    assert fila["fase"] == "ortorrombica"
+    assert fila["grupo_espacial"] == "Pnma"
+
+
+def test_un_job_sin_fase_no_inventa_una(tmp_path):
+    """Sin potencial se prepara la cubica y no se escribe fases.json. El ledger
+    tiene que decir que no se midio, no suponer que salio cubica."""
+    from buho.discovery import DiscoveryLoop
+
+    cfg = _config(tmp_path)
+    loop = DiscoveryLoop(config_path=cfg, project_root=ROOT, data_root=tmp_path,
+                         models_root=tmp_path)
+    loop.init_space(reset=True)
+    cid = str(loop._read_ledger().iloc[0]["candidate_id"])
+
+    job = tmp_path / "jobs" / cid
+    job.mkdir(parents=True)
+    loop._anotar_fases([job])
+
+    out = loop._read_ledger()
+    assert "fase" not in out.columns or pd.isna(out.iloc[0].get("fase"))

@@ -402,3 +402,89 @@ def test_un_selector_que_no_elige_nada_tampoco(tmp_path, cfg, caplog):
 
     assert len(hechos) == 1
     assert "ninguna fase relajo" in caplog.text
+
+
+# ── Que la fase elegida llegue de verdad al calculo ──────────────────────────
+#
+# Estas tres cubren el hueco que hacia cosmetica toda la seleccion: `prepare`
+# exporta la cubica ANTES de elegir fase, el `input.py` generado hace
+# `read("structure.cif")`, y `_elegir_fase` no reexportaba. Con un selector
+# perfecto, GPAW seguia relajando la cubica y el unico rastro era un fases.json
+# diciendo otra cosa. Las pruebas de arriba pasaban igual.
+
+def _selector_a(atoms_elegidos, fase="ortorrombica"):
+    def selector(cand, atoms, meta):
+        return {"ok": True, "fase": fase, "glazer": "a-a-c+",
+                "grupo_espacial": {"simbolo": "Pnma", "numero": 62},
+                "convergido": True, "a_semilla_A": 6.1834,
+                "a_relajado_mlff_A": 6.3210, "atoms": atoms_elegidos,
+                "ranking": [{"fase": fase, "dE_meV_por_formula": 0.0}]}
+    return selector
+
+
+def test_el_cif_del_job_es_la_fase_elegida_no_la_cubica(tmp_path, cfg, candidatas):
+    """Lo que GPAW va a leer. Es la prueba que faltaba: sin ella, elegir fase
+    escribia un JSON y no cambiaba ni un atomo del calculo."""
+    from ase.io import read
+
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    _spglib_o_skip()
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+    elegida = candidatas["ortorrombica"]["atoms"]
+
+    prep = _preparador(tmp_path, cfg, _selector_a(elegida))
+    hechos = prep.prepare([_candidato(gen)], out_root=tmp_path / "jobs")
+
+    del_disco = read(str(hechos[0] / "structure.cif"))
+    assert len(del_disco) == len(elegida)
+    assert F.grupo_espacial(del_disco)["numero"] == 62, (
+        "el CIF que se va a calcular sigue siendo cubico")
+
+
+def test_la_cubica_de_partida_se_conserva_para_poder_auditarla(tmp_path, cfg, candidatas):
+    """De donde salio la celda es discutible; que no quede rastro, no."""
+    from ase.io import read
+
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    _spglib_o_skip()
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+
+    prep = _preparador(tmp_path, cfg, _selector_a(candidatas["ortorrombica"]["atoms"]))
+    hechos = prep.prepare([_candidato(gen)], out_root=tmp_path / "jobs")
+
+    padre = hechos[0] / "structure_cubica.cif"
+    assert padre.is_file()
+    assert F.grupo_espacial(read(str(padre)))["numero"] == 221
+
+
+def test_una_fase_inclinada_se_calcula_como_supercelda(tmp_path, cfg, candidatas):
+    """La bandera decide la malla k y el reparto MPI. Una fase inclinada es una
+    supercelda 2x2x2 aunque el compuesto sea puro: muestrearla a [2,2,2] es una
+    malla efectiva 4^3 --- ocho veces el coste, y distinta de la 2^3 a la que
+    esta calibrada la escala de bandgap."""
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+    elegida = candidatas["ortorrombica"]["atoms"]
+    assert len(elegida) == 40, "la fixture debe ser una 2x2x2"
+
+    prep = _preparador(tmp_path, cfg, _selector_a(elegida))
+    hechos = prep.prepare([_candidato(gen)], out_root=tmp_path / "jobs")
+
+    generado = (hechos[0] / "input.py").read_text(encoding="utf-8")
+    assert "_kpts = [1, 1, 1] if True else [2, 2, 2]" in generado
+
+
+def test_sin_seleccion_una_celda_pura_sigue_siendo_primitiva(tmp_path, cfg):
+    """La otra mitad del contrato: el cambio no puede convertir en supercelda lo
+    que siempre fue una celda de cinco atomos."""
+    from buho.generator.heuristic_generator import HeuristicGenerator
+
+    gen = HeuristicGenerator(str(CONFIG), random_seed=1)
+    prep = _preparador(tmp_path, cfg)
+    hechos = prep.prepare([_candidato(gen)], out_root=tmp_path / "jobs")
+
+    generado = (hechos[0] / "input.py").read_text(encoding="utf-8")
+    assert "_kpts = [1, 1, 1] if False else [2, 2, 2]" in generado

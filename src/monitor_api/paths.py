@@ -258,7 +258,12 @@ def materializar_pipeline(*, version: str, forzar: bool = False) -> dict[str, ob
 
     copiados = 0
     try:
-        for sub in ("scripts", "src"):
+        # `configs` va con los otros dos: `dft_cspbi3.calculator_factory`
+        # resuelve `configs/default_params.yaml` contra la raiz del pipeline
+        # materializado y hace open() sin fallback, asi que copiar solo scripts
+        # y src dejaba ahi una ruta que no existe en ninguna instalacion
+        # congelada.
+        for sub in ("scripts", "src", "configs"):
             raiz_origen = origen / sub
             if not raiz_origen.is_dir():
                 continue

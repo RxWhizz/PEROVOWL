@@ -63,6 +63,10 @@ TEXT_LEDGER_COLUMNS = {
     "error_message",
     "job_id",
     "dft_status",
+    # De que fase salio el numero. Sin esto el ledger dice "CsPbI3: 1.5 eV" sin
+    # decir de cual de sus fases, que es media respuesta.
+    "fase",
+    "grupo_espacial",
 }
 BOOLEAN_LEDGER_COLUMNS = {
     "converged",
@@ -1200,6 +1204,48 @@ class DiscoveryLoop:
             )
         return conservados, descartados
 
+    def _anotar_fases(self, job_dirs: list) -> None:
+        """Lleva al ledger la fase con la que se preparo cada trabajo.
+
+        Se anota aqui y no al recoger resultados a proposito: la fase se decide
+        al preparar, asi que anotarla ahora es lo unico que la conserva cuando
+        el DFT falla --- y un DFT fallido sobre una fase concreta es justo lo que
+        hace falta saber para decidir si reintentar.
+        """
+        filas: dict[str, dict[str, Any]] = {}
+        for job_dir in job_dirs:
+            fichero = Path(job_dir) / "fases.json"
+            if not fichero.is_file():
+                continue
+            try:
+                datos = json.loads(fichero.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                log.warning("fases.json ilegible en %s: %s", job_dir, exc)
+                continue
+            if not datos.get("ok"):
+                continue
+            filas[Path(job_dir).name] = {
+                "fase": datos.get("fase"),
+                "grupo_espacial": (datos.get("grupo_espacial") or {}).get("simbolo"),
+            }
+        if not filas:
+            return
+
+        ledger = self._read_ledger()
+        if ledger.empty or "candidate_id" not in ledger:
+            return
+        for col in ("fase", "grupo_espacial"):
+            if col not in ledger.columns:
+                ledger[col] = None
+        ids = ledger["candidate_id"].astype(str)
+        for cid, valores in filas.items():
+            mask = ids == cid
+            if not mask.any():
+                continue
+            for col, valor in valores.items():
+                ledger.loc[mask, col] = valor
+        self._write_ledger(ledger)
+
     def prepare_round(
         self,
         round_id: int,
@@ -1241,14 +1287,24 @@ class DiscoveryLoop:
             from buho.dft_jobs.prepare_relaxation_jobs import RelaxationJobPreparer
 
             runs_dir = self._round_runs_dir(round_id)
+            # La fase deja de suponerse. Si no hay potencial interatomico el
+            # selector es None y se prepara la cubica, igual que antes; lo que
+            # ya no pasa es prepararla sin decirlo.
+            from buho.structure.selector_mlff import crear_selector_fase
+
+            selector = crear_selector_fase(
+                self.config, selected, project_root=self.project_root)
             preparer = RelaxationJobPreparer(
                 self.config,
                 project_root=self.project_root,
                 n_cores=self.runner_cores,
+                selector_fase=selector,
             )
             prepared = preparer.prepare(selected, out_root=runs_dir, config_src=self.config_path)
             self._mark_discovery_jobs(runs_dir, round_id, candidate_ids)
+            self._anotar_fases(prepared)
             n_prepared = len(prepared)
+            manifest["seleccion_de_fase"] = bool(selector)
             manifest.update(
                 status="dft_prepared",
                 runs_dir=str(runs_dir),
@@ -1951,6 +2007,8 @@ class DiscoveryLoop:
             "round_completed",
             "last_screened_round",
             "drop_reason",
+            "fase",
+            "grupo_espacial",
         ]
         meta_cols = [col for col in cols if col in ledger]
         if len(meta_cols) <= 1:
@@ -1988,10 +2046,22 @@ class DiscoveryLoop:
             "|---|---:|---:|---:|---:|---|---|",
         ]
         n_riesgo = 0
+        n_medidas = 0
         for item in status["frontier"][:30]:
             riesgo = item.get("riesgo_politipo")
             if riesgo:
                 n_riesgo += 1
+            # Si la fase se eligio de verdad --- competencia de fases con el
+            # potencial, grupo espacial identificado con spglib--- se dice cual.
+            # Solo cuando no hay medida se cae al juicio geometrico, que es una
+            # hipotesis y no un resultado.
+            medida = item.get("fase")
+            if medida:
+                n_medidas += 1
+                grupo = item.get("grupo_espacial")
+                etiqueta = f"{medida} ({grupo})" if grupo else str(medida)
+            else:
+                etiqueta = "marginal" if riesgo else "plausible"
             lines.append(
                 "| {formula} | {eg} | {eform} | {pv} | {acq} | {st} | {fase} |".format(
                     formula=item.get("formula") or "",
@@ -2000,7 +2070,7 @@ class DiscoveryLoop:
                     pv=item.get("pv_score_ml") if item.get("pv_score_ml") is not None else "",
                     acq=item.get("acquisition_score") if item.get("acquisition_score") is not None else "",
                     st=item.get("status") or "",
-                    fase="marginal" if riesgo else "plausible",
+                    fase=etiqueta,
                 )
             )
 
@@ -2012,14 +2082,24 @@ class DiscoveryLoop:
             "",
             "## Sobre la fase",
             "",
-            "Ninguna fila de esta tabla tiene la fase confirmada. El cribado",
-            "evalúa la perovskita cúbica ideal; que sea la fase estable a",
-            "temperatura ambiente es una hipótesis, no un resultado. El",
-            "contraejemplo conocido es CsPbI₃: pasa el filtro geométrico y su",
-            "fase estable a 25 °C es la δ, sin comportamiento de perovskita.",
+            f"De los {min(30, len(status['frontier']))} mostrados, {n_medidas} llevan",
+            "la fase **medida**: se generaron las distorsiones de inclinación que",
+            "una perovskita de haluro admite, compitieron en energía con el",
+            "potencial interatómico y el grupo espacial de la ganadora se",
+            "identificó con spglib. Medido así, para CsPbI₃ la cúbica pierde por",
+            "124 meV por fórmula, que es lo que dice el experimento.",
             "",
-            f"De los {min(30, len(status['frontier']))} mostrados, {n_riesgo} están",
-            "marcados `marginal` por factor de tolerancia lejos de 1.",
+            "El resto tiene la fase **supuesta**. Ahí el cribado evalúa la",
+            "perovskita cúbica ideal; que sea la fase estable a temperatura",
+            "ambiente es una hipótesis, no un resultado. El contraejemplo",
+            "conocido es CsPbI₃: pasa el filtro geométrico y su fase estable a",
+            "25 °C es la δ, sin comportamiento de perovskita.",
+            "",
+            f"{n_riesgo} están marcados `marginal` por factor de tolerancia lejos",
+            "de 1.",
+            "",
+            "Medir la fase no es confirmarla: la competencia es a 0 K y con un",
+            "potencial no validado en esta familia. Da un orden, no una prueba.",
             "",
             "Confirmar la fase exige fonones — frecuencias reales y positivas",
             "indican un mínimo verdadero; una imaginaria señala que el material",

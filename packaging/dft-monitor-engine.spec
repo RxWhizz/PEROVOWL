@@ -28,6 +28,17 @@ datas = [
     (str(_gen_stage), "config"),
 ]
 
+# Los parametros de GPAW del pipeline. `dft_cspbi3.calculator_factory` los
+# resuelve como `parents[3] / "configs" / "default_params.yaml"` y hace `open()`
+# a secas, sin comprobar que existan; ni esto ni `materializar_pipeline` los
+# ponian nunca en una instalacion congelada. Hoy no esta en el camino critico
+# --- el runner del cribado usa su propia plantilla--- pero es exactamente la
+# clase de fallo que dejo el scissor de SOC sin cargar durante versiones.
+_params = ROOT / "configs" / "default_params.yaml"
+if _params.is_file():
+    datas.append((str(_params), "configs"))
+    datas.append((str(_params), "pipeline/configs"))
+
 # Las DOS tablas de calibracion del bandgap.
 #
 # Sin `soc_scissor.json` las etiquetas de entrenamiento salen sin correccion de
@@ -137,6 +148,14 @@ hiddenimports = [
     "dft_cspbi3.structure_builder",
     "buho.structure.build_abx3",
     "buho.dft_jobs.prepare_relaxation_jobs",
+    # Competencia de fases y autodiagnostico: los dos se importan dentro de
+    # funciones. `fases` es ademas lo que el autodiagnostico usa para comprobar
+    # que spglib identifica de verdad, asi que sin el la comprobacion no podria
+    # ni ejecutarse.
+    "buho.structure.fases",
+    "buho.structure.selector_mlff",
+    "monitor_api.autodiagnostico",
+    "ml_surrogate.model",
 ]
 if sys.platform != "win32":
     hiddenimports += ["uvicorn.loops.uvloop", "uvicorn.protocols.http.httptools_impl"]

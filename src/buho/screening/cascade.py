@@ -411,12 +411,25 @@ class ScreeningCascade:
                 # Se descarta solo si la ventana no es alcanzable ni contando el
                 # margen de error del modelo. Un Eg de 0.95 ± 0.18 sigue siendo
                 # un candidato plausible a 1.1 eV.
-                margen = self._sigma_k * sigma
+                #
+                # Y hay dos errores, no uno. El del surrogate (σ, que el propio
+                # ensemble estima) y el de la calibracion que acaba de llevar el
+                # valor a escala experimental, que aqui es el que manda: 6.0 %
+                # medido, ~0.11 eV en el borde superior de la ventana. Contar
+                # solo σ descartaba candidatos validos por menos de lo que la
+                # tabla ya declaraba equivocarse --- CsPbI3 y CsSnBr3, medidos.
+                # Si la escala no se aplico, `eg` no esta en esa escala y su
+                # error de calibracion no significa nada: el margen es 0.
+                margen_cal = (eg_scale.margen_calibracion(eg)
+                              if corregir_escala else 0.0)
+                margen = self._sigma_k * sigma + margen_cal
                 if math.isnan(eg) or eg + margen < self._pv_min or eg - margen > self._pv_max:
                     row["dropped_at_tier"] = 1
                     row["drop_reason"] = (
-                        f"Eg {eg:.2f}±{sigma:.2f} eV fuera de la ventana "
-                        f"[{self._pv_min}, {self._pv_max}] con {self._sigma_k}σ de holgura"
+                        f"Eg {eg:.2f} eV fuera de la ventana "
+                        f"[{self._pv_min}, {self._pv_max}] con {self._sigma_k}σ="
+                        f"{self._sigma_k * sigma:.2f} del modelo y "
+                        f"{margen_cal:.2f} eV de la calibracion"
                         if not math.isnan(eg) else "el surrogate no predijo Eg"
                     )
 

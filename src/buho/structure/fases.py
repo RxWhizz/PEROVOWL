@@ -343,6 +343,7 @@ def ordenar_por_energia(candidatas: list[dict[str, Any]], calculador, *,
 
 def seleccionar_fase(atoms, calculador, *, b_sites: set[str], x_sites: set[str],
                      a_semilla: float, supercelda_base: tuple[int, int, int] = (2, 2, 2),
+                     fmax: float = 0.05, pasos: int = 300,
                      ) -> dict[str, Any]:
     """Elige la fase de menor energia y le devuelve el tamano de la semilla.
 
@@ -366,7 +367,7 @@ def seleccionar_fase(atoms, calculador, *, b_sites: set[str], x_sites: set[str],
     """
     candidatas = generar_candidatas(
         atoms, b_sites=b_sites, x_sites=x_sites, supercelda_base=supercelda_base)
-    ordenadas = ordenar_por_energia(candidatas, calculador)
+    ordenadas = ordenar_por_energia(candidatas, calculador, fmax=fmax, pasos=pasos)
     if not ordenadas:
         return {"ok": False, "motivo": "ninguna fase relajo"}
 

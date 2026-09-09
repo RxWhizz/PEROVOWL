@@ -146,3 +146,73 @@ def test_una_escala_distinta_no_se_da_por_buena():
     setattr(modelo, eg_scale.ATRIBUTO_MODELO, "otra_escala_vieja")
 
     assert eg_scale.aplicable_a(modelo) is False
+
+
+# ── El error de la propia calibracion ────────────────────────────────────────
+#
+# La tabla mide su error (6.0 % sobre los nueve haluros de referencia) y hasta
+# ahora lo tiraba al parsear. La ventana del Tier 1 contaba la sigma del
+# surrogate y daba el desplazamiento por exacto, asi que descartaba candidatos
+# validos por menos de lo que la propia tabla declaraba equivocarse.
+
+def test_el_error_medido_viaja_con_el_ajuste(tmp_path):
+    tabla = tmp_path / "eg_scale.json"
+    tabla.write_text(json.dumps({
+        "ajuste": AJUSTE,
+        "errores_pct": {"error_relativo_medio_sin_corregir": 84.5,
+                        "error_relativo_medio_corregido": 6.0},
+    }), encoding="utf-8")
+
+    cargado = eg_scale.cargar_tabla(tabla)
+
+    assert cargado["error_relativo_pct"] == 6.0
+    assert eg_scale.describir(cargado)["error_relativo_pct"] == 6.0
+
+
+def test_el_margen_es_relativo_al_gap():
+    """El error de la tabla es relativo, asi que en eV crece con el gap. Un
+    margen fijo seria demasiado en el borde inferior y demasiado poco en el
+    superior, que es donde se perdian los candidatos."""
+    ajuste = {**AJUSTE, "error_relativo_pct": 6.0}
+
+    assert eg_scale.margen_calibracion(1.80, ajuste) == pytest.approx(0.108)
+    assert eg_scale.margen_calibracion(1.10, ajuste) == pytest.approx(0.066)
+
+
+def test_sin_tabla_no_hay_margen_que_contar():
+    """Sin correccion de escala tampoco hay error de correccion, y el numero
+    cribado ni siquiera esta en esa escala."""
+    assert eg_scale.margen_calibracion(1.8, {}) == 0.0
+    assert eg_scale.margen_calibracion(1.8, AJUSTE) == 0.0
+    assert eg_scale.margen_calibracion(None, {**AJUSTE, "error_relativo_pct": 6.0}) == 0.0
+
+
+def test_un_error_no_numerico_avisa_y_no_tumba_la_carga(tmp_path, caplog):
+    tabla = tmp_path / "eg_scale.json"
+    tabla.write_text(json.dumps({
+        "ajuste": AJUSTE,
+        "errores_pct": {"error_relativo_medio_corregido": "seis por ciento"},
+    }), encoding="utf-8")
+
+    with caplog.at_level("WARNING"):
+        cargado = eg_scale.cargar_tabla(tabla)
+
+    assert cargado["coeficientes"]          # el ajuste sigue sirviendo
+    assert "error_relativo_medio_corregido" in caplog.text
+    assert eg_scale.margen_calibracion(1.8, cargado) == 0.0
+
+
+@pytest.mark.parametrize("eg, exp, nombre", [
+    (1.839, 1.73, "CsPbI3"),
+    (1.844, 1.75, "CsSnBr3"),
+])
+def test_los_dos_falsos_negativos_de_borde_vuelven_a_la_ventana(eg, exp, nombre):
+    """Los dos casos que la auditoria midio: predichos justo por encima de 1.8,
+    con el valor experimental dentro. Con el margen de la calibracion dejan de
+    caer fuera; sin el, se perdian por centesimas."""
+    ajuste = {**AJUSTE, "error_relativo_pct": 6.0}
+    margen = eg_scale.margen_calibracion(eg, ajuste)
+
+    assert eg > 1.8, f"{nombre}: el caso solo existe si el predicho se sale"
+    assert exp < 1.8
+    assert eg - margen < 1.8, f"{nombre} seguiria descartandose"

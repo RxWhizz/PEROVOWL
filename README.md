@@ -108,6 +108,14 @@ unitaria para composiciones puras, supercelda 2×2×2 de 40 átomos para las
 mezclas. MA y FA se sustituyen por un pseudoátomo, porque una molécula orgánica
 completa no cabe en el presupuesto de un cribado.
 
+**La fase no se supone.** Antes de preparar el cálculo se generan las cinco
+distorsiones de inclinación que esta familia admite, compiten en energía con el
+potencial interatómico y va a DFT la ganadora, con su grupo espacial
+identificado. Para CsPbI₃ la cúbica pierde por 124 meV/f.u. —es la fase α, que
+solo existe por encima de 330 °C— y eso vale del orden de 1 eV de bandgap. Sin
+potencial interatómico instalado se prepara la cúbica y se anota que fue
+supuesta.
+
 El DFT de esta fase es **a propósito barato**: PBE, `ecut` 300 eV, malla 2×2×2 o
 Γ-only en superceldas, y single-point en lugar de relajación. r²SCAN se descartó
 aquí por coste: a un core son ~195 s por iteración, unos cinco días para 482
