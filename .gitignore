@@ -82,8 +82,13 @@ dist/
 .tmp_pytest/
 
 # App de escritorio (Flutter)
-apps/dft_monitor_flutter/build/
-apps/dft_monitor_flutter/.dart_tool/
+# Estas reglas no impidieron que los dos acabaran versionados como symlinks a
+# rutas de una maquina concreta (/media/luis-ochoa/..., /dev/shm): .gitignore no
+# aplica a lo que ya esta en el indice, y una vez dentro daba igual. Cualquier
+# clon limpio recibia dos enlaces rotos y `flutter pub get` no podia crear
+# .dart_tool. Sin barra final para que tampoco casen solo como directorios.
+apps/dft_monitor_flutter/build
+apps/dft_monitor_flutter/.dart_tool
 apps/dft_monitor_flutter/.flutter-plugins*
 
 # Copias de seguridad de configuración
